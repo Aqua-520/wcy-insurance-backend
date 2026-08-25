@@ -30,6 +30,9 @@ app = FastAPI(
     debug=settings.app.debug,
     lifespan=lifespan
 )
+# 导入每个模块的路由对象进行挂载
+from app.modules.product.router import router as product_router
+app.include_router(product_router)
 
 # CORS配置，解决跨域问题
 app.add_middleware(
