@@ -40,7 +40,7 @@ class ProductRepository:
         从数据库根据指定查询条件进行筛选查询
         :param category: 产品分类
         :param premium_min: 只返回 min_premium < premium_min 的产品
-        :param limit_per_category: 每个险种最多返回数量
+        :param limit_per_category: 每次最大返回数量,分页
         :return: 保险产品查询结果数组
         """
         # 服务层通过循环进行多种类查询,不要让数据库一次查询多种种类
@@ -56,7 +56,7 @@ class ProductRepository:
         # 进行数据库查询
         result = await self.session.scalars(
             # 根据id升序,并且将字段为null的排到末尾
-            select(Product).where(and_(*conditions)).order_by(Product.id.asc().nullslast())
+            select(Product).where(and_(*conditions)).order_by(Product.id.asc())
             .limit(limit_per_category)
         )
 

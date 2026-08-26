@@ -22,6 +22,7 @@ class ProductService:
     # 查询
     async def get_candidate_product_list_service(self,categories: list[str],
                                          premium_min: Decimal|None,
+                                                 # 最大单条查询返回5条数据
                                          limit_per_category:int|None=5):
         # 循环调用种类,拼接结果数组返回
         result_list:list[Product] = []

@@ -31,7 +31,7 @@ async def get_product_List(category: str|None = None,service: ProductService = D
     return ProductsResponse(items=product_result)
 
 # 查询推荐候选产品
-@router.get('/api/v1/products/candidates',response_model=list[ProductResponse],summary='给大模型用,推荐候选产品接口')
+@router.get('/v1/products/candidates',response_model=list[ProductResponse],summary='给大模型用,推荐候选产品接口')
 async def get_candidate_product_list_router(categories: list[str] = Query(...,description='产品分类，可重复传参'),
                                     premium_min: Decimal | None = Query(None, description="只返回min_premium小于该值的产品"),
                                      limit_per_category: int | None = Query(5, description="每个险种最多返回数量"),
