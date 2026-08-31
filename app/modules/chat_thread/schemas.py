@@ -2,6 +2,7 @@
     前后端交互的pydantic请求响应模型
 """
 from datetime import datetime
+from typing import List
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -31,3 +32,44 @@ class ChatThreadCreateResponse(BaseModel):
     model_config = {
         'from_attributes': True
     }
+
+# 前端get响应模型，返回对话详情
+class Message(BaseModel):
+        """
+        封装一问一答聊天详情的对象
+        # 通过role区分角色
+        """
+        role: str  # "user" 或 "assistant"
+        content: str
+
+        class Config:
+            json_schema_extra = {
+                "example": {
+                    "role": "user",
+                    "content": "我想买保险，预算一年 8000"
+                }
+            }
+
+class ChatThreadHistoryResponse(BaseModel):
+        """
+        给前端进行回显的响应对象
+        """
+        thread_id: UUID  # 使用UUID类型，自动验证格式
+        messages: List[Message]  # 消息列表
+
+        class Config:
+            json_schema_extra = {
+                "example": {
+                    "thread_id": "11111111-1111-1111-1111-111111111111",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "我想买保险，预算一年 8000"
+                        },
+                        {
+                            "role": "assistant",
+                            "content": "可以，我先给你规划一套医疗险、重疾险和意外险组合。"
+                        }
+                    ]
+                }
+            }

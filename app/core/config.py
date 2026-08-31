@@ -34,17 +34,28 @@ class DatabaseSettings(EnvSettings):
     pool_timeout: int = Field(alias="DB_POOL_TIMEOUT", default=30)
     pool_recycle: int = Field(alias="DB_POOL_RECYCLE", default=1800)
 
-    @computed_field
-    @property
-    def url(self) -> str:
+    # 数据库连接引擎的连接地址
+    def base_url(self, scheme) -> str:
         # 自动拼接URL路径
         return PostgresDsn.build(
-            scheme="postgresql+asyncpg",
+            scheme=scheme,
             host=self.host,
             port=self.port,
             username=self.user,
             password=self.password
         ).encoded_string()
+
+    @computed_field
+    @property
+    def url(self) -> str:
+        # 根据情况返回不同的数据库连接地址
+        return self.base_url("postgresql+asyncpg")
+
+    # langchain使用的postgre地址
+    @computed_field
+    @property
+    def checkpoint_url(self) -> str:
+        return self.base_url('postgresql')
 
 class LLMSettings(EnvSettings):
     """模型相关配置"""

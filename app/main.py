@@ -1,3 +1,4 @@
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -20,12 +21,28 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     logger.info(f"【{settings.app.name}】应用启动中...")
     from app.infra.database import check_database, close_database
+    from app.infra.checkpoint import init_checkpointer, close_checkpointer
+    from app.agents.insurance_advisor import init_insurance_agent
     try:
+        # sqlalchemy框架初始化连接池
         await check_database()
+
+        # 初始化langchain的连接池
+        checkpointer = await init_checkpointer()
+
+        # 初始化agent,将会话对象传入做记忆持久化
+        # 绑定到app实例上,供业务层使用agent对象
+        app.state.agent = init_insurance_agent(checkpointer)
+
         yield
     finally:
         logger.info("应用关闭中... ")
+
+        # 关闭sqlalchemy的数据库连接池
         await close_database()
+
+        # 关闭langchain的数据库连接池
+        await close_checkpointer()
 
 app = FastAPI(
     # 从环境变量读取项目名称和是否开启debug
@@ -39,8 +56,12 @@ app.include_router(product_router)
 # 导入会话管理路由
 from app.modules.chat_thread.router import router as chat_thread_router
 app.include_router(chat_thread_router)
+# 导入大模型消息调用的路由
+from app.modules.chat.router import router as chat_router
+app.include_router(chat_router)
 
 # CORS配置，解决跨域问题
+# 放行5173端口的访问,让浏览器忽略跨域问题
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -76,5 +97,6 @@ if __name__ == "__main__":
         "app.main:app",
         host=settings.app.host,
         port=settings.app.port,
-        reload=False
+        reload=False,
+        loop="asyncio:SelectorEventLoop" if sys.platform == "win32" else "auto"
     )

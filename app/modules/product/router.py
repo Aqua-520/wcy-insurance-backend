@@ -10,7 +10,7 @@ from .schemas import ProductsResponse,ProductResponse
 # 获取业务层类
 from .service import ProductService
 
-router = APIRouter(prefix='/api',tags=['products'])
+router = APIRouter(prefix='/api',tags=['保险产品相关路由'])
 
 # 初始化业务层的函数
 async def init_product_service(session:AsyncSession = Depends(get_session)):

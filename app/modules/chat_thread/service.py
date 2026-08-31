@@ -3,19 +3,26 @@
 """
 from uuid import UUID
 
+from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.runnables import RunnableConfig
+from langgraph.graph.state import CompiledStateGraph
 from sqlalchemy.ext.asyncio import AsyncSession
 from .repository import ChatThreadRepository
 from .models import ChatThread
 # 导入自定义异常
 from .exceptions import ChatThreadNotFoundError
+from .schemas import ChatThreadHistoryResponse, Message
+
 
 class ChatThreadService:
     # 构造函数
-    def __init__(self,session:AsyncSession):
+    def __init__(self,session:AsyncSession,agent:CompiledStateGraph):
         # 将数据库会话对象保存到当前实例身上,并且将数据库层对象保存到对象身上
         self.session = session
         # 拿到数据层操作对象
         self.repository = ChatThreadRepository(session)
+        # 对象身上新绑定一个agent对象
+        self.agent = agent
 
     # 新增会话的方法
     async def add(self,user_id:int, title: str)-> ChatThread:
@@ -96,7 +103,54 @@ class ChatThreadService:
                 # 如果为空则抛出异常
                 raise ChatThreadNotFoundError
 
-            # 通过异常执行删除操作
+            # 通过非空判断执行删除操作
+            # 先删除同会话id的会话详情历史
+            # 从agent对象身上直接能拿到checkpointer检查点对象,通过这个对象执行数据库删除操作
+            await self.agent.checkpointer.delete_thread(str(thread_id))
+
+            # 再删除会话id
             await self.repository.delete_chat_thread_owner_repository(chat_thread)
 
         # 数据库操作完毕,不需要返回值
+
+    # 回显会话详情历史
+    async def get_chat_content_service(self,user_id: int,thread_id:UUID) -> ChatThreadHistoryResponse:
+        """
+        接收用户id,和会话id,通过agent对象,langchain自动查找数据库快照
+        解析成前端要求的响应格式进行返回
+        :param user_id: 用户唯一标识
+        :param thread_id: 会话id
+        :return: 返回符合规范的响应格式对象
+        """
+        # 先根据user_id查一把，看看有没有会话消息管理的对象
+        chat_thread = await self.repository.get_chat_thread_owner_repository(thread_id, user_id)
+
+        # 判断是否存在
+        if chat_thread is None:
+            # 如果为空则抛出异常
+            raise ChatThreadNotFoundError
+
+        # 构建会话config，会话id
+        # 前端传入会话id
+        _config = RunnableConfig(configurable={"thread_id": str(thread_id)})
+
+        # 通过agent对象，拿到消息快照
+        snapshot = await self.agent.aget_state(_config)
+
+        # 定义消息数组
+        message_list:list[Message] = []
+        # 循环消息快照,将快照映射成我们需要返回的数据格式
+        for item in snapshot.values.get('messages', []):
+            if isinstance(item, HumanMessage):
+                # 如果是用户消息,则构建消息对象,设置角色为user
+                user_obj = Message(role='user',content=item.text)
+                message_list.append(user_obj)
+            elif isinstance(item, AIMessage):
+                assistant_obj = Message(role='assistant',content=item.text)
+                message_list.append(assistant_obj)
+            else:
+                # 忽略工具调用消息
+                continue
+
+        # 赋值完成后,返回最后的响应体对象
+        return ChatThreadHistoryResponse(thread_id=thread_id,messages=message_list)
