@@ -106,7 +106,7 @@ class ChatThreadService:
             # 通过非空判断执行删除操作
             # 先删除同会话id的会话详情历史
             # 从agent对象身上直接能拿到checkpointer检查点对象,通过这个对象执行数据库删除操作
-            await self.agent.checkpointer.delete_thread(str(thread_id))
+            await self.agent.checkpointer.adelete_thread(str(thread_id))
 
             # 再删除会话id
             await self.repository.delete_chat_thread_owner_repository(chat_thread)

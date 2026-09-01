@@ -10,6 +10,8 @@ from langgraph.graph.state import CompiledStateGraph
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.chat_thread.repository import ChatThreadRepository
 from .schemas import ChatRequestModel
+# 构建上下文对象,保存用户id
+from app.agents.schemas import InsuranceAgentContext
 
 
 class ChatService:
@@ -51,21 +53,14 @@ class ChatService:
         # 构建会话历史保存配置
         _config = RunnableConfig(configurable={"thread_id": request.thread_id})
 
-        # response = await self.agent.ainvoke(
-        #     input = _input,
-        #     config = _config
-        # )
-        #
-        # # 解构出大模型的返回消息的总容器部分
-        # model_result = response["messages"][-1]
-        #
-        # # 返回模型的恢回复消息
-        # return model_result.content
+        # 将用户id挂载到agent的上下文属性身上,供工具调用
+        # 因为这里是业务代码,可以拿到前端会话路由发来的用户id
+        _context = InsuranceAgentContext(user_id=user_id)
 
         # 改成stream流式调用
         # astream_events方法会开启无限循环接收大模型返回的消息,不断地yield吐出chunk
         # 而yield函数又是一个异步生成器,如果需要循环生成器对象,则需要给循环加上async
-        stream = await self.agent.astream_events(input=_input,config=_config,version='v3')
+        stream = await self.agent.astream_events(input=_input,config=_config,version='v3',context=_context)
 
         # 将stream遍历解包出来,改造成迭代器返回
         # 循环迭代器必须要加async

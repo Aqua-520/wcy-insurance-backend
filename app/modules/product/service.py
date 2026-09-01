@@ -16,7 +16,11 @@ class ProductService:
 
     # 调用查询产品的方法
     async def get_product_list_service(self,category:str | None)-> list[Product]:
-        # 这里数据库函数调用为异步,需要加await拿到返回结果
+        """
+        这里数据库函数调用为异步,需要加await拿到返回结果
+        :param category: 保险商品分类
+        :return: 商品查询结果列表
+        """
         return await self.repository.get_product_list_repository(category)
 
     # 查询
@@ -24,6 +28,15 @@ class ProductService:
                                          premium_min: Decimal|None,
                                                  # 最大单条查询返回5条数据
                                          limit_per_category:int|None=5):
+        """
+        给大模型用的服务层
+        基于商品种类,价格,和最大返回数
+        拿来做保险产品方案,做候选产品查询功能
+        :param categories: 商品分类,可以传多种,或者同类传多次
+        :param premium_min: 不超过多少价格
+        :param limit_per_category: 最多返回几条数据
+        :return:
+        """
         # 循环调用种类,拼接结果数组返回
         result_list:list[Product] = []
 
