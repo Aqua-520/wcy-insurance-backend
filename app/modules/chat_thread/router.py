@@ -15,7 +15,7 @@ from app.infra.database import get_session
 router = APIRouter(prefix='/api/v1/chat-threads',tags=['聊天会话窗口管理路由'])
 
 # 初始化业务,服务层
-async def init_chat_Thread_service(request:Request,session: AsyncSession = Depends(get_session)):
+async def init_chat_thread_service(request:Request,session: AsyncSession = Depends(get_session)):
     # 创建业务层对象,
     # 新增一一条agent对象传入
     return ChatThreadService(session=session,agent=request.app.state.agent)
@@ -23,9 +23,9 @@ async def init_chat_Thread_service(request:Request,session: AsyncSession = Depen
 
 @router.post(path='',response_model=ChatThreadCreateResponse)
 # 新建会话的路由函数
-async def create_chat_Thread(request_body:ChatThreadCreateRequest,
+async def create_chat_thread(request_body:ChatThreadCreateRequest,
                              user_id: Annotated[int,Header(alias='x-user-id')],
-                             service: ChatThreadService = Depends(init_chat_Thread_service)):
+                             service: ChatThreadService = Depends(init_chat_thread_service)):
     # 将用户身份信息,响应体聊天标题
     result = await service.add(user_id=user_id,title=request_body.title)
 
@@ -35,7 +35,7 @@ async def create_chat_Thread(request_body:ChatThreadCreateRequest,
 @router.get('',response_model=list[ChatThreadCreateResponse])
 # 查询所有会话列表的路由
 async def get_chat_thread_list(user_id: Annotated[int,Header(alias='x-user-id')],
-                                service: ChatThreadService = Depends(init_chat_Thread_service)):
+                                service: ChatThreadService = Depends(init_chat_thread_service)):
     """
     获取消息列表的函数
     :param user_id: 前端请求头传入用户id
@@ -45,13 +45,14 @@ async def get_chat_thread_list(user_id: Annotated[int,Header(alias='x-user-id')]
     result = await service.get_chat_thread_list_service(user_id=user_id)
     return result
 
+
 @router.patch('/{thread_id}',response_model=ChatThreadCreateResponse)
 # 修改某一条会话的路由
 async def update_chat_thread_title(
         request_body: ChatThreadCreateRequest,
         thread_id: UUID,
         user_id: Annotated[int, Header(alias='x-user-id')],
-        service: ChatThreadService = Depends(init_chat_Thread_service)
+        service: ChatThreadService = Depends(init_chat_thread_service)
 ):
     """
     修改会话title的接口
@@ -69,7 +70,7 @@ async def update_chat_thread_title(
 async def delete_chat_thread(
         thread_id: UUID,
         user_id: Annotated[int,Header(alias='x-user-id')],
-        service: ChatThreadService = Depends(init_chat_Thread_service)
+        service: ChatThreadService = Depends(init_chat_thread_service)
 ):
     # 将路由收到的参数传递给下一层进行处理
     await service.delete_chat_thread_owner_service(thread_id,user_id)
@@ -86,7 +87,7 @@ async def get_chat_content(
         # 用户唯一标识id
         user_id: Annotated[int, Header(alias='x-user-id')],
         # 注入业务层对象
-        service: ChatThreadService = Depends(init_chat_Thread_service)
+        service: ChatThreadService = Depends(init_chat_thread_service)
 ):
     # 接收会话id做回显，根据user_id查一把看看
     return await service.get_chat_content_service(user_id,thread_id)

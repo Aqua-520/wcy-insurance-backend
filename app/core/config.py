@@ -66,11 +66,17 @@ class LoggingSettings(EnvSettings):
     """日志相关配置"""
     level: str = Field(alias="LOGGING_LEVEL", default="INFO") # 可选值：DEBUG、INFO、WARNING、ERROR、CRITICAL
 
+# rag相关环境变量配置
+class RagSettings(EnvSettings):
+    miner_u_token: str = Field(alias="MINERU_TOKEN")
+
 class Settings(BaseSettings):
     app: AppSettings = Field(default_factory=AppSettings)
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
+    # 新增环境变量挂载
+    rag: RagSettings = Field(default_factory=RagSettings)
 
 # 项目启动直接初始化
 settings = Settings()

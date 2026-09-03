@@ -33,6 +33,9 @@ dependencies = [
     "ipykernel>=7.3.0",
     "langchain-mcp-adapters>=0.3.2",
     "fastmcp>=3.4.7",
+    "langchain-community>=0.4.2",
+    "pypdf>=6.16.2",
+    "ipywidgets>=8.1.9",
 ]
 
 [project.optional-dependencies]
