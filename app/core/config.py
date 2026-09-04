@@ -69,6 +69,15 @@ class LoggingSettings(EnvSettings):
 # rag相关环境变量配置
 class RagSettings(EnvSettings):
     miner_u_token: str = Field(alias="MINERU_TOKEN")
+    # 向量数据库配置
+    milvus_host: str = Field(alias="MILVUS_HOST")
+    milvus_port: int = Field(alias="MILVUS_PORT", default=19530)
+
+    # 计算属性:链接地址
+    @computed_field
+    @property
+    def milvus_url(self) -> str:
+        return f"http://{self.milvus_host}:{self.milvus_port}"
 
 class Settings(BaseSettings):
     app: AppSettings = Field(default_factory=AppSettings)
