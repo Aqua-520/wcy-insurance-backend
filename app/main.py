@@ -23,6 +23,8 @@ async def lifespan(app: FastAPI):
     from app.infra.database import check_database, close_database
     from app.infra.checkpoint import init_checkpointer, close_checkpointer
     from app.agents.insurance_advisor import init_insurance_agent
+    # 导入向量数据库初始化模块
+    from app.rag import close_vector_store
     try:
         # sqlalchemy框架初始化连接池
         await check_database()
@@ -43,6 +45,9 @@ async def lifespan(app: FastAPI):
 
         # 关闭langchain的数据库连接池
         await close_checkpointer()
+
+        # 关闭向量数据库连接
+        close_vector_store()
 
 app = FastAPI(
     # 从环境变量读取项目名称和是否开启debug

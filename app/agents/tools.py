@@ -20,6 +20,8 @@ from app.modules.insurance_plan.schemas import InsurancePlanCreate
 from app.modules.insurance_plan.service import InsurancePlanService
 # 导入当前agent被指定的上下文对象类型
 from .schemas import InsuranceAgentContext
+# 导入rag模块的向量数据库查询对象
+from app.rag import question_retriever
 
 
 # 定义保费推荐工具的pydantic模型,做数据校验,并且写上描述让大模型精准判断
@@ -104,7 +106,37 @@ async def create_insurance_plan(insurance_data:InsurancePlanCreate,runtime:ToolR
         "plan_id":str(plan_id)
     }
 
+# 定义根据知识库查询方案的检索工具
+@tool
+async def query_product_clause(user_question: str,product_id: int):
+    """
+    根据用户问题检索指定保险产品的条款内容，用于回答产品细则咨询。
+    该工具会从保险条款知识库中检索与用户问题最相关的条款片段，
+    并按“章节路径 + 正文”的格式整理返回。适用于解答保险责任、
+    免责条款、理赔条件、保障范围等具体条款细节问题。
+    :param user_question: 用户问题
+    :param product_id: 产品的主键id,你在查寻保险产品列表的时候会得到产品对象,产品id用于限定查询某件产品的条款
+    :return: 格式化后的条款片段字符串，多个片段以换行符拼接。
+             每个片段格式为：
+                 章节:章节路径（用下划线连接）
+                 正文内容:条款原文
+             若未检索到任何相关内容，则返回空字符串。
+    """
+    parent_chunks = await question_retriever.retrieve(question=user_question,product_id=product_id)
 
+    if not parent_chunks:
+        return "没有找到相关条款"
+
+    # 定义需要格式化的字符串列表
+    result_chunks = [
+        f"""
+            章节:{'_'.join(parent_chunk.section_path)}
+            正文内容:{parent_chunk.content}
+        """.strip() # 去掉前后空格
+        for parent_chunk in parent_chunks
+    ]
+    # result_chunks每一项存的都是格式化后的字符串结果,我们将列表拼成完整的大字符串返回给大模型作为提示词
+    return '\n'.join(result_chunks)
 
 
 

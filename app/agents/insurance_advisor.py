@@ -1,4 +1,4 @@
-from distutils.cmd import Command
+from langgraph.types import Command
 from typing import Callable
 
 from langchain.agents import create_agent
@@ -11,7 +11,7 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 from app.core.config import settings
 from app.core.logging import get_logger
 # 导入定义的工具
-from .tools import query_candidate_products, create_insurance_plan
+from .tools import query_candidate_products, create_insurance_plan, query_product_clause
 # 导入context上下文格式规定类型
 from .schemas import InsuranceAgentContext
 
@@ -34,7 +34,7 @@ async def handle_tool_errors(request: ToolCallRequest, handler: Callable) -> Too
         return await handler(request)
     except Exception as e:
         # 打印错误日志
-        logger.error(f'大模型工具执行失败:{e}')
+        logger.exception(f'大模型工具执行失败:{e}')
 
         # 返回异常
         return ToolMessage(
@@ -58,7 +58,9 @@ def init_insurance_agent(checkpointer: AsyncPostgresSaver):
             # 查询候选产品列表
             query_candidate_products,
             # 保存保险方案
-            create_insurance_plan
+            create_insurance_plan,
+            # 根据用户提问精确查询某一个产品的条款
+            query_product_clause
         ],
         system_prompt=SYSTEM_PROMPT,
         checkpointer=checkpointer,
