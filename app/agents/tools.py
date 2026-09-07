@@ -1,6 +1,7 @@
 """
     此模块为大模型调用的工具模块
 """
+import json
 from decimal import Decimal
 from typing import Literal, Optional, List
 
@@ -22,7 +23,8 @@ from app.modules.insurance_plan.service import InsurancePlanService
 from .schemas import InsuranceAgentContext
 # 导入rag模块的向量数据库查询对象
 from app.rag import question_retriever
-
+# 给langgraph注入自定义信息流
+from langgraph.config import get_stream_writer
 
 # 定义保费推荐工具的pydantic模型,做数据校验,并且写上描述让大模型精准判断
 class QueryCandidateProductsToolResult(BaseModel):
@@ -127,16 +129,46 @@ async def query_product_clause(user_question: str,product_id: int):
     if not parent_chunks:
         return "没有找到相关条款"
 
-    # 定义需要格式化的字符串列表
-    result_chunks = [
-        f"""
-            章节:{'_'.join(parent_chunk.section_path)}
-            正文内容:{parent_chunk.content}
-        """.strip() # 去掉前后空格
-        for parent_chunk in parent_chunks
-    ]
+    # # 定义需要格式化的字符串列表
+    # result_chunks = [
+    #     f"""
+    #         章节:{'_'.join(parent_chunk.section_path)}
+    #         正文内容:{parent_chunk.content}
+    #     """.strip() # 去掉前后空格
+    #     for parent_chunk in parent_chunks
+    # ]
+
+    # 修改工具的返回结果为标准的json字符串格式,附带各种详细信息
+    """    
+    {
+        "ref-001": {
+            "section_path": "",
+            "content": ""
+        },
+        "ref-002": {
+            "section_path": "",
+            "content": ""
+        }
+    }
+    """
+    result_chunks_dict = {
+        f"ref-{index:03d}": {
+            "source_id": f"ref-{index:03d}",
+            "section_path": parent_chunk.section_path,
+            "content": parent_chunk.content,
+            "clause_name": parent_chunk.clause_name,
+            "product_id": parent_chunk.product_id
+        }
+        for index,parent_chunk in enumerate(parent_chunks,start=1)
+    }
+
+    # 创建自定义事件,将结果额外截出来发给前端
+    # 通过调用传参的形式
+    writer = get_stream_writer()
+    writer({"type": "additional_info", "data": result_chunks_dict})
+
     # result_chunks每一项存的都是格式化后的字符串结果,我们将列表拼成完整的大字符串返回给大模型作为提示词
-    return '\n'.join(result_chunks)
+    return json.dumps(result_chunks_dict,indent=2,ensure_ascii=False)
 
 
 
