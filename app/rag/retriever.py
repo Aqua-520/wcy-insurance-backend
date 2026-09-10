@@ -13,22 +13,21 @@ logger = get_logger(__name__)
 
 
 # 定义自定义重排函数
-def create_cross_encoder_ranker(queries: list[str]):
-    return Function(
-        # 重排函数名
-        name="小汪重排ranker",
-        input_field_names=["text"],  # 原始文档字段
-        function_type=FunctionType.RERANK,  # ranker类型，这里是固定值
-        params={
-            # 使用模型进行reranker
-            "reranker": "model",
-            "provider": "ali",  # rerank模型提供者
-            "model_name": "gte-rerank-v2",  # rerank模型名称
-            "queries": queries,  # 查询条件
-            "max_client_batch_size": 5,  # 向模型发送请求时的批处理限制
-        },
-    )
-
+# def create_cross_encoder_ranker(queries: list[str]):
+#     return Function(
+#         # 重排函数名
+#         name="小汪重排ranker",
+#         input_field_names=["text"],  # 原始文档字段
+#         function_type=FunctionType.RERANK,  # ranker类型，这里是固定值
+#         params={
+#             # 使用模型进行reranker
+#             "reranker": "model",
+#             "provider": "ali",  # rerank模型提供者
+#             "model_name": "gte-rerank-v2",  # rerank模型名称
+#             "queries": queries,  # 查询条件
+#             "max_client_batch_size": 5,  # 向模型发送请求时的批处理限制
+#         },
+#     )
 # 封装查询类
 class QuestionChunkRetriever:
     def __init__(self,vector_store: Milvus):
@@ -46,14 +45,17 @@ class QuestionChunkRetriever:
         """
         # 使用向量数据库对象进行向量化匹配
         # 拿到匹配的子块结果列表
-        child_chunks = self.vector_store.similarity_search(
+        child_chunks = await self.vector_store.asimilarity_search(
             query=question,
             k=top_k,
+            fetch_k=2 * top_k,
             # 根据特定规则进行条件筛选,我们需要控制在某一个保险产品的范围内
             # 避免检索到别的保险产品内容
             expr=f'product_id == {product_id}',
             # 传入自定义排序函数
-            reranker=create_cross_encoder_ranker([question])
+            # reranker=create_cross_encoder_ranker([question])
+            ranker_type = "rrf",  # 字符串，不是 Function
+            ranker_params = {"k": 60},  # 字典
         )
 
         # 对子块的父块id做去重,因为多个子块属于同一个父块id

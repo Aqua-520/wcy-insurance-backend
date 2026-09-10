@@ -2,10 +2,12 @@
     前后端交互的pydantic请求响应模型
 """
 from datetime import datetime
-from typing import List
+from typing import List, Optional, Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
+# 导入引用类型的state中那个状态回显字典类型
+from app.agents.schemas import AdditionalInfoData
 
 
 # 创建会话的请求模型类
@@ -29,9 +31,12 @@ class ChatThreadCreateResponse(BaseModel):
     # 开启字段校验,从数据库模型转到pydantic模型的时候
     # 不开则是将数据库对象转成了json
     # 开了转成pydantic对象,并且进行了安全校验
-    model_config = {
-        'from_attributes': True
-    }
+    # model_config = {
+    #     'from_attributes': True
+    # }
+
+    # 改后
+    model_config = ConfigDict(from_attributes=True)
 
 # 前端get响应模型，返回对话详情
 class Message(BaseModel):
@@ -41,14 +46,17 @@ class Message(BaseModel):
         """
         role: str  # "user" 或 "assistant"
         content: str
+        # 新增条款引用的回显
+        additional_info: Optional[AdditionalInfoData] = Field(default=None,description='引用的条款片段回显')
 
-        class Config:
-            json_schema_extra = {
+        model_config = ConfigDict(
+            json_schema_extra={
                 "example": {
                     "role": "user",
-                    "content": "我想买保险，预算一年 8000"
+                    "content": "我想买保险，预算一年 8000",
                 }
             }
+        )
 
 class ChatThreadHistoryResponse(BaseModel):
         """
@@ -57,19 +65,17 @@ class ChatThreadHistoryResponse(BaseModel):
         thread_id: UUID  # 使用UUID类型，自动验证格式
         messages: List[Message]  # 消息列表
 
-        class Config:
-            json_schema_extra = {
+        # 中断回显字段
+        interrupt: Optional[Any] = None  # 没有中断时为 None
+
+        model_config = ConfigDict(
+            json_schema_extra={
                 "example": {
                     "thread_id": "11111111-1111-1111-1111-111111111111",
                     "messages": [
-                        {
-                            "role": "user",
-                            "content": "我想买保险，预算一年 8000"
-                        },
-                        {
-                            "role": "assistant",
-                            "content": "可以，我先给你规划一套医疗险、重疾险和意外险组合。"
-                        }
-                    ]
+                        {"role": "user", "content": "我想买保险，预算一年 8000"},
+                        {"role": "assistant", "content": "可以，我先给你规划一套组合。"},
+                    ],
                 }
             }
+        )

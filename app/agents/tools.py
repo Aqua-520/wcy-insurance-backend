@@ -8,6 +8,7 @@ from typing import Literal, Optional, List
 from fastapi.encoders import jsonable_encoder
 from langchain.tools import tool
 from langgraph.prebuilt import ToolRuntime
+from langgraph.types import interrupt
 from pydantic import BaseModel, ConfigDict, Field
 
 # 导入sqlalchemy数据库会话对象
@@ -90,6 +91,25 @@ async def create_insurance_plan(insurance_data:InsurancePlanCreate,runtime:ToolR
     :param insurance_data: 保险方案的数据格式
     :return: 保险方案生成的结果
     """
+    # 创建保险方案需要人工确认,我们添加一个中断函数
+    decision = interrupt(
+        # 这里面可以传入任意的中断信息
+        # 人工定义一个字典
+        {
+            # 保险方案pydantic模型,转json
+            "plan": insurance_data.model_dump(mode='json'),
+            "confirm_info": "小汪提示您,是否确认保存这份方案",
+            "action":["approve","reject"]
+        }
+    )
+    # 异常打断函数执行后,再次回到这个函数就没有异常了,开始判断decision里面的值
+    if decision.get('action') == 'reject':
+        # 用户拒绝保存
+        return {
+        "message":"保险方案创建失败,用户拒绝保存"
+        f"原因:{decision.get('reject_reason')}"
+    }
+
     # 没有路由层注入session,我们自己用工厂再开一个session
     async with AsyncSessionFactory() as session:
         # 获取到保险产品业务层的对象

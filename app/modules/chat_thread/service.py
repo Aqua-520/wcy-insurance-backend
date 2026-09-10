@@ -137,20 +137,42 @@ class ChatThreadService:
         # 通过agent对象，拿到消息快照
         snapshot = await self.agent.aget_state(_config)
 
+        # 如果有条款引用,将快照中的条款引用一起发给前端
+        additional_info = snapshot.values.get('additional_info',{})
+
         # 定义消息数组
         message_list:list[Message] = []
         # 循环消息快照,将快照映射成我们需要返回的数据格式
         for item in snapshot.values.get('messages', []):
             if isinstance(item, HumanMessage):
                 # 如果是用户消息,则构建消息对象,设置角色为user
-                user_obj = Message(role='user',content=item.text)
+                user_obj = Message(role='user',content=item.text,additional_info=additional_info.get(item.id))
                 message_list.append(user_obj)
             elif isinstance(item, AIMessage):
-                assistant_obj = Message(role='assistant',content=item.text)
+                assistant_obj = Message(role='assistant',content=item.text,additional_info=additional_info.get(item.id))
                 message_list.append(assistant_obj)
             else:
                 # 忽略工具调用消息
                 continue
 
+        """
+            处理中断信息
+            如果上次用户没处理,则需要做中断信息回显继续操作
+        """
+        interrupts = None
+        if hasattr(snapshot,'interrupts') and snapshot.interrupts:
+            # 先看新版字段有没有
+            interrupts = snapshot.interrupts
+        elif hasattr(snapshot, 'tasks') and snapshot.tasks:
+            # 再看看旧版tasks属性里面找
+            # 找到了则循环取值
+            for task in snapshot.tasks:
+                if hasattr(task,'interrupts') and task.interrupts:
+                    interrupts = task.interrupts
+                    # 找到了就结束循环
+                    break
+
         # 赋值完成后,返回最后的响应体对象
-        return ChatThreadHistoryResponse(thread_id=thread_id,messages=message_list)
+        return ChatThreadHistoryResponse(thread_id=thread_id,messages=message_list,
+                                         interrupt=interrupts[0].value if interrupts else None
+                                         )

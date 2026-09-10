@@ -7,14 +7,19 @@ from fastapi.sse import ServerSentEvent
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command
 from langgraph.stream import CustomTransformer
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.chat_thread.repository import ChatThreadRepository
 from .schemas import ChatRequestModel
 # 构建上下文对象,保存用户id
-from app.agents.schemas import InsuranceAgentContext
+# 引用状态类,存储条款引用数据
+from app.agents.schemas import InsuranceAgentContext,AdditionalInfoData
 # 引用异步事件流合并
-from aiostream import stream as astream
+# from aiostream import stream as astream
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 class ChatService:
     # 我们需要从路由层的fastapi身上拿到agent对象
@@ -29,7 +34,7 @@ class ChatService:
             self,
             user_id: int,
             request: ChatRequestModel
-                   )-> AsyncIterator[ServerSentEvent]:
+                   ) -> AsyncIterator[ServerSentEvent]:
         # 这里user_id从路由层传入,不需要Head函数拿到
         # 请求体直接传过来做校验
 
@@ -47,11 +52,17 @@ class ChatService:
         # invoke需要传入用户最新消息,和历史会话消息的配置
 
         # 构建用户消息
-        _input = {
-            "messages":[
-                HumanMessage(content = request.message)
-            ]
-        }
+        # 判断一下本轮是否有中断恢复的字段,有则代表需要用户输入决策了
+        if request.decision:
+            # 这里是langgraph.types这个模块下封装的Command
+            _input = Command(resume=request.decision)
+        else:
+            # 构建普通用户消息,准备调用聊天大模型
+            _input = {
+                "messages":[
+                    HumanMessage(content = request.message)
+                ]
+            }
         # 构建会话历史保存配置
         _config = RunnableConfig(configurable={"thread_id": request.thread_id})
 
@@ -100,6 +111,10 @@ class ChatService:
         #     async for event in  stream_message:
         #         yield event
 
+        # 定义两个变量,存储每一次渲染流开始的id,用于区分每个引用的归属聊天流
+        final_message_id: str|None = None
+        # 定义字典来copy一份引用信息存到state中,state会自动调用checkpointer完成数据库持久化保存
+        additional_info_data: AdditionalInfoData = {}
         # 自定义解析事件流
         async for event_dict in stream:
             """
@@ -118,6 +133,9 @@ class ChatService:
                 elif data.get('delta','') and data.get('delta').get('text'):
                     # 这里是系统自动构建的消息,是一个字典,delta这个key里面的文本才是图封装的消息
                     yield ServerSentEvent(data=data.get('delta').get('text'),event='message')
+                # 抓取流起始id
+                elif data.get('event') == 'message-start' and data.get('id'):
+                    final_message_id = data.get('id')
 
             # 解析自定义消息类型
             if method == 'custom':
@@ -126,9 +144,34 @@ class ChatService:
                 # 解析事件类型
                 if data.get('type') == 'additional_info':
                     # 如果是这个事件,获取数据返回给前端
+                    # copy一份到变量里,存储到状态中
                     additional_info_data = data.get('data')
                     # 前端需要识别事件流event == additional_info做渲染
                     yield ServerSentEvent(data=additional_info_data,event='additional_info')
+
+        # 检测中断,内部是抛出自定义异常的形式来中断函数的
+        interrupts = await stream.interrupts()
+        if interrupts:
+            logger.info(f'事件中断:{interrupts},需要用户进行手动操作了')
+            # 将中断信息以 SSE 事件推送给前端，等待用户输入/确认
+            for item in interrupts:
+                # 这个item.value刚好就是interrupt函数的入参数据
+                yield ServerSentEvent(data=item.value,event='interrupt')
+
+
+        # 抄一份返回给前端的引用,将工具自定义事件引用数据持久化保存到checkpointer
+        if not interrupts and final_message_id and additional_info_data:
+            # 这两个都被赋值,有数据,推入图中做state更新操作
+            await self.agent.aupdate_state(
+                # config区分会话id
+                config=_config,
+                # 存一个字典,通过state的追加做更新操作
+                values={
+                    "additional_info":{
+                        final_message_id:additional_info_data
+                    }
+                }
+            )
 
         # 结束响应
         yield ServerSentEvent(data='[DONE]',event='done')

@@ -1,6 +1,6 @@
 # 定义一个冻结类,注入到agent对象中,供this这个agent的身上可以携带一些额外的上下文信息
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Literal, Optional, Annotated, Any
 
 from langgraph.graph import MessagesState
 from pydantic import BaseModel, Field
@@ -27,10 +27,23 @@ class RouterResultModel(BaseModel):
     intent: Intent = Field(...,description='意图识别的结果,必须为限定的类型格式范围')
     reason: str = Field(...,description='意图识别的理由是什么,为什么选这个意图结果')
 
-
+# 引用信息追加函数
+AdditionalInfoData = dict[str,Any] # 自定义类型变量
+def merge_additional_info(old: dict[str,AdditionalInfoData],new: dict[str,AdditionalInfoData]):
+    # 拼接两个字典
+    # 初始化old为空,直接把新的丢到旧的身上完成覆盖即可
+    if old is None:
+        return new
+    # 如果有,直接合并两个字典
+    old.update(new)
+    return old
 
 class InsuranceAgentState(MessagesState):
     # 继承后自动带一个messages追加形式的列表
     # 新增加两个字段
     previous_workflow: Optional[Intent]
     active_workflow: Optional[Intent]
+
+    # 新增一个字段,保存引用信息
+    # 字段的类型是一个字典,字典里面是消息id,消息id后面又跟一个字典
+    additional_info: Annotated[dict[str,AdditionalInfoData],merge_additional_info]

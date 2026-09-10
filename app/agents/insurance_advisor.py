@@ -1,3 +1,4 @@
+from langgraph.errors import GraphBubbleUp
 from langgraph.types import Command
 from typing import Callable
 
@@ -5,7 +6,7 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import wrap_tool_call
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import ToolMessage
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+# from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.prebuilt.tool_node import ToolCallRequest
 
 from app.core.config import settings
@@ -37,6 +38,9 @@ async def handle_tool_errors(request: ToolCallRequest, handler: Callable) -> Too
     try:
         # 所有的工具函数会被这个中间件函数包裹后调用执行
         return await handler(request)
+    # 释放中断的异常
+    except GraphBubbleUp:
+        raise
     except Exception as e:
         # 打印错误日志
         logger.exception(f'大模型工具执行失败:{e}')
