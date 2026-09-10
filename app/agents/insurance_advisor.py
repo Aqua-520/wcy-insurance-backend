@@ -48,7 +48,7 @@ async def handle_tool_errors(request: ToolCallRequest, handler: Callable) -> Too
         )
 
 # 智能体初始化函数
-def init_insurance_agent(checkpointer: AsyncPostgresSaver):
+def init_insurance_agent():
     # 1.初始化模型
     model = init_chat_model(
         model=settings.llm.chat_model,
@@ -68,7 +68,8 @@ def init_insurance_agent(checkpointer: AsyncPostgresSaver):
             query_product_clause
         ],
         system_prompt=SYSTEM_PROMPT,
-        checkpointer=checkpointer,
+        # 直接并到父图中,共享checkpointer
+        checkpointer=True,
         # 声明 Agent 在运行时期望接收的上下文数据结构
         context_schema=InsuranceAgentContext,
         # 配置中间件列表，用于拦截和控制工具调用的生命周期。

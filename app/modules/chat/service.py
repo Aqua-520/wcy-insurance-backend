@@ -4,7 +4,7 @@
 from typing import AsyncIterator
 
 from fastapi.sse import ServerSentEvent
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.stream import CustomTransformer
@@ -65,40 +65,70 @@ class ChatService:
         stream = await self.agent.astream_events(input=_input,config=_config,version='v3',context=_context,
                                                  transformers=[CustomTransformer])
 
-        # 将stream遍历解包出来,改造成迭代器返回
-        # 循环迭代器必须要加async
-        async def stream_message():
-            """
-            拆解大模型返回的迭代器
-            :return: 返回给前端做消息页面渲染
-            """
-            async for content in stream.messages:
-                async for text in content.text:
-                    # 构造sse对象返回
-                    yield ServerSentEvent(data=text, event='message')
+        # # 将stream遍历解包出来,改造成迭代器返回
+        # # 循环迭代器必须要加async
+        # async def stream_message():
+        #     """
+        #     拆解大模型返回的迭代器
+        #     :return: 返回给前端做消息页面渲染
+        #     """
+        #     async for content in stream.messages:
+        #         async for text in content.text:
+        #             # 构造sse对象返回
+        #             yield ServerSentEvent(data=text, event='message')
+        #
+        # # 通过自定义事件,工具调用返回的查询结果,给前端原封不动发送回去
+        # async def custom_stream_message():
+        #     """
+        #     发送给前端,工具结果按照格式返回
+        #     前端渲染引用文本
+        #     :return: 工具中writer写入的自定义事件
+        #     """
+        #     async for event in stream.extensions['custom']:
+        #         # 获取事件类型为additional_info自定义名称
+        #         if event.get('type') == 'additional_info':
+        #             # 返回自定义信息流
+        #             yield ServerSentEvent(data=event.get('data'), event='additional_info')
+        #
+        # # 合并两个事件流统一输出给前端
+        # merged = astream.merge(
+        #     stream_message(),
+        #     custom_stream_message()
+        # )
+        # # 开启事件流
+        # async with merged.stream() as stream_message:
+        #     async for event in  stream_message:
+        #         yield event
 
-        # 通过自定义事件,工具调用返回的查询结果,给前端原封不动发送回去
-        async def custom_stream_message():
+        # 自定义解析事件流
+        async for event_dict in stream:
             """
-            发送给前端,工具结果按照格式返回
-            前端渲染引用文本
-            :return: 工具中writer写入的自定义事件
+                stream是一个迭代器
+                每次循环拿到的是一个字典
             """
-            async for event in stream.extensions['custom']:
-                # 获取事件类型为additional_info自定义名称
-                if event.get('type') == 'additional_info':
-                    # 返回自定义信息流
-                    yield ServerSentEvent(data=event.get('data'), event='additional_info')
+            # 判断事件类型
+            method = event_dict['method']
+            # langgraph封装的消息事件叫messages
+            if method == 'messages':
+                # 解析里面的数据
+                data = event_dict['params']['data'][0]
+                if isinstance(data,AIMessage):
+                    # 如果第一条为手动构建的Ai消息,也就是我们要返回的固定消息,直接响应给前端
+                    yield ServerSentEvent(data=data.text,event='message') # 消息类型给前端做渲染用,data为消息内容
+                elif data.get('delta','') and data.get('delta').get('text'):
+                    # 这里是系统自动构建的消息,是一个字典,delta这个key里面的文本才是图封装的消息
+                    yield ServerSentEvent(data=data.get('delta').get('text'),event='message')
 
-        # 合并两个事件流统一输出给前端
-        merged = astream.merge(
-            stream_message(),
-            custom_stream_message()
-        )
-        # 开启事件流
-        async with merged.stream() as stream_message:
-            async for event in  stream_message:
-                yield event
+            # 解析自定义消息类型
+            if method == 'custom':
+                # 将里面的data拿过来
+                data = event_dict['params']['data']
+                # 解析事件类型
+                if data.get('type') == 'additional_info':
+                    # 如果是这个事件,获取数据返回给前端
+                    additional_info_data = data.get('data')
+                    # 前端需要识别事件流event == additional_info做渲染
+                    yield ServerSentEvent(data=additional_info_data,event='additional_info')
 
         # 结束响应
         yield ServerSentEvent(data='[DONE]',event='done')

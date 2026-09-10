@@ -3,7 +3,6 @@
 """
 from uuid import UUID
 
-from jaraco.functools import retry
 from sqlalchemy.ext.asyncio import AsyncSession
 from .repository import InsurancePlanRepository
 from .schemas import InsurancePlanCreate

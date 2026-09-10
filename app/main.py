@@ -22,7 +22,8 @@ async def lifespan(app: FastAPI):
     logger.info(f"【{settings.app.name}】应用启动中...")
     from app.infra.database import check_database, close_database
     from app.infra.checkpoint import init_checkpointer, close_checkpointer
-    from app.agents.insurance_advisor import init_insurance_agent
+    # from app.agents.insurance_advisor import init_insurance_agent
+    from app.agents.orchestrator import init_router_agent
     # 导入向量数据库初始化模块
     from app.rag import close_vector_store
     try:
@@ -34,7 +35,11 @@ async def lifespan(app: FastAPI):
 
         # 初始化agent,将会话对象传入做记忆持久化
         # 绑定到app实例上,供业务层使用agent对象
-        app.state.agent = init_insurance_agent(checkpointer)
+        # agent = init_insurance_agent(checkpointer)
+
+        # 使用自定义图来创建编排器agent工作流
+        agent = init_router_agent(checkpointer)
+        app.state.agent = agent
 
         yield
     finally:
