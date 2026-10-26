@@ -1,15 +1,30 @@
+import os
 from pathlib import Path
 
-from pydantic import Field, computed_field, PostgresDsn
+from pydantic import Field, computed_field, model_validator, PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 以当前文件为基准，找向上2级的父目录，也就是项目的根目录
 APP_ROOT = Path(__file__).resolve().parents[2]
 
+# 当前运行环境: dev(默认,本地开发) / prod(生产)
+# 该开关必须来自操作系统环境变量(如 docker -e APP_ENV=prod),
+# 不能写进 .env 文件——要先知道环境才能决定加载哪个 env 文件。
+APP_ENV = os.environ.get("APP_ENV", "dev").lower()
+
+# 环境白名单提前校验: 拼错(如 test/production)立刻给出清晰错误,
+# 而不是等加载一个不存在的 .env.xxx 时报一堆"缺少必填项"
+if APP_ENV not in ("dev", "prod"):
+    raise ValueError(f"不支持的 APP_ENV={APP_ENV!r}，只允许 dev / prod")
+
+# 按环境加载对应的配置文件: .env.dev / .env.prod
+# 真实值文件不进 git, 仓库只提供 .env.*.example 模板
+ENV_FILE = APP_ROOT / f".env.{APP_ENV}"
+
 class EnvSettings(BaseSettings):
     """公共settings，配置.env文件位置"""
     model_config = SettingsConfigDict(
-        env_file=(APP_ROOT / ".env",),
+        env_file=(ENV_FILE,),
         env_file_encoding="utf-8",
         extra="ignore",  # settings中未定义的字段被忽略
     )
@@ -97,6 +112,23 @@ class Settings(BaseSettings):
     auth: AuthSettings = Field(default_factory=AuthSettings)
     # 新增环境变量挂载
     rag: RagSettings = Field(default_factory=RagSettings)
+
+    # 当前环境标识(dev/prod), 方便日志与排查
+    env: str = APP_ENV
+
+    @model_validator(mode="after")
+    def _check_env_safety(self) -> "Settings":
+        if APP_ENV == "prod":
+            # 生产环境必须关闭 debug
+            if self.app.debug:
+                raise ValueError("生产环境(APP_ENV=prod)必须设置 APP_DEBUG=false")
+            # 生产环境必须通过环境变量注入真实 JWT 密钥, 禁止使用内置默认值
+            if self.auth.secret_key == "anxinbao-dev-secret-please-change":
+                raise ValueError(
+                    "生产环境(APP_ENV=prod)检测到 JWT_SECRET 仍为开发默认值，"
+                    "请通过环境变量注入一个随机强密钥"
+                )
+        return self
 
 # 项目启动直接初始化
 settings = Settings()

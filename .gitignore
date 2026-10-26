@@ -42,10 +42,13 @@ notebook/.ipynb_checkpoints/
 *.sqlite
 *.sqlite3
 
-# 环境变量
+# 环境变量(真实值文件不进 git; 仅保留 .example 模板)
 .env
 .env.local
 .env.*.local
+.env.dev
+.env.prod
+!.env.*.example
 
 # 测试和覆盖率
 .pytest_cache/
