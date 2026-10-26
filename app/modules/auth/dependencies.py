@@ -6,9 +6,11 @@ from typing import Optional
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.infra.database import get_session
+# 鉴权查库使用独立 session, 不与业务 service 共享请求级 session:
+# FastAPI 会对同一依赖(get_session)做缓存, 若共用, 这里的 SELECT 会触发
+# autobegin, 导致业务层再调 session.begin() 时报 "transaction already begun"
+from app.infra.database import AsyncSessionFactory
 
 from .exceptions import TokenInvalidError, UserInactiveError
 from .repository import UserRepository
@@ -27,7 +29,6 @@ class CurrentUser:
 
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
-    session: AsyncSession = Depends(get_session),
 ) -> CurrentUser:
     # 1.必须携带 Bearer 令牌
     if credentials is None or not credentials.credentials:
@@ -41,11 +42,12 @@ async def get_current_user(
     except (TypeError, ValueError):
         raise TokenInvalidError
 
-    # 3.回查数据库, 确认用户仍然存在且未被停用
-    user = await UserRepository(session).get_by_id(user_id)
-    if user is None:
-        raise TokenInvalidError
-    if user.status != "active":
-        raise UserInactiveError
+    # 3.回查数据库, 确认用户仍然存在且未被停用(用独立 session, 随查随关)
+    async with AsyncSessionFactory() as session:
+        user = await UserRepository(session).get_by_id(user_id)
+        if user is None:
+            raise TokenInvalidError
+        if user.status != "active":
+            raise UserInactiveError
 
-    return CurrentUser(user_id=user.id, username=user.username)
+        return CurrentUser(user_id=user.id, username=user.username)
