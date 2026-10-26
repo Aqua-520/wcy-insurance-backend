@@ -9,7 +9,7 @@ from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage
 
 from app.core.config import settings
-from core.logging import get_logger
+from app.core.logging import get_logger
 
 from .schemas import RouterResultModel
 from langchain_core.messages import SystemMessage

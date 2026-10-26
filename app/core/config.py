@@ -66,6 +66,15 @@ class LoggingSettings(EnvSettings):
     """日志相关配置"""
     level: str = Field(alias="LOGGING_LEVEL", default="INFO") # 可选值：DEBUG、INFO、WARNING、ERROR、CRITICAL
 
+# 认证鉴权相关环境变量配置
+class AuthSettings(EnvSettings):
+    # JWT 签名密钥(生产环境必须通过环境变量覆盖)
+    secret_key: str = Field(alias="JWT_SECRET", default="anxinbao-dev-secret-please-change")
+    # 签名算法
+    algorithm: str = Field(alias="JWT_ALGORITHM", default="HS256")
+    # access_token 有效期(分钟),默认 24 小时
+    access_token_expire_minutes: int = Field(alias="JWT_EXPIRE_MINUTES", default=1440)
+
 # rag相关环境变量配置
 class RagSettings(EnvSettings):
     miner_u_token: str = Field(alias="MINERU_TOKEN")
@@ -84,6 +93,8 @@ class Settings(BaseSettings):
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
+    # 认证鉴权配置
+    auth: AuthSettings = Field(default_factory=AuthSettings)
     # 新增环境变量挂载
     rag: RagSettings = Field(default_factory=RagSettings)
 

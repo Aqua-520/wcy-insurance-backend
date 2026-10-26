@@ -61,6 +61,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 # 导入每个模块的路由对象进行挂载
+from app.modules.auth.router import router as auth_router
+app.include_router(auth_router)
 from app.modules.product.router import router as product_router
 app.include_router(product_router)
 # 导入会话管理路由

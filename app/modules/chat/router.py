@@ -2,16 +2,13 @@
     聊天请求的路由层
     接收前端请求体,并且调用与大模型交互的service层
 """
-from typing import Annotated
-from uuid import UUID
-
 from fastapi import APIRouter, Depends
-from fastapi.params import Header
 from fastapi.sse import EventSourceResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
 from app.infra.database import get_session
+from app.modules.auth.dependencies import CurrentUser, get_current_user
 # 导入请求模型
 from .schemas import ChatRequestModel
 # 服务层类
@@ -31,22 +28,14 @@ def init_chat_service(
 
 @router.post('/chat',summary='发送消息给大模型',response_class=EventSourceResponse)
 async def chat(
-        # 接收用户id
-        user_id: Annotated[int, Header(alias='x-user-id')],
         request: ChatRequestModel,
+        # 从登录令牌解析当前用户, 不再信任请求头
+        current: CurrentUser = Depends(get_current_user),
         # 注入依赖
         service: ChatService = Depends(init_chat_service)
 ):
-    # 调用业务层对象方法,传入请求体和用户id拿到模型结果返回
+    # 调用业务层对象方法,传入可信的用户id和请求体,拿到模型结果返回
     # service层返回的也是异步生成器,循环需要加上async
-    async for sse in service.chat_service(user_id,request):
+    async for sse in service.chat_service(current.user_id, request):
         # 返回sse流式片段对象
         yield sse
-
-    #  模拟流式sse调用
-    # for i in range(10):
-    #     # data存储消息,event标注当前片段的事件类型,fastapi看到返回值为EventSourceResponse,会不断调用此接口函数
-    #     # 此函数在遇到yield不断暂停,被fastapi不断调用生成器向前端发送消息,yield执行完毕后走到最后的end
-    #     yield ServerSentEvent(data=f'message_{i}',event='message')
-    #
-    # yield ServerSentEvent(data='[DONE]',event='done')

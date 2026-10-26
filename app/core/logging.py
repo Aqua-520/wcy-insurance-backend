@@ -17,6 +17,13 @@ def configure_logging(level: str = "INFO") -> None:
     root_logger.setLevel(log_level)
     root_logger.handlers.clear()
 
+    # Windows 中文控制台默认 GBK，写入 ✅ 这类字符会抛 UnicodeEncodeError
+    # 这里只放宽 errors（保留控制台原编码，中文仍正常显示），避免日志拖垮启动
+    try:
+        sys.stdout.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(log_level)
     console_handler.setFormatter(
