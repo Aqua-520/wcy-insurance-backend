@@ -37,7 +37,7 @@ class QueryCandidateProductsToolResult(BaseModel):
 
     id: int = Field(...,description="产品ID（内部主键）")
     name: str = Field(...,description="商城展示名称")
-    clause_name: str = Field(...,description="主条款文件名，包含 .pdf 后缀")
+    clause_name: Optional[str] = Field(default=None,description="主条款文件名，包含 .pdf 后缀")
     category: str = Field(...,description="险种分类：医疗、重疾、意外或寿险")
     insurer: str = Field(...,description="承保保险公司")
     image_url: Optional[str] = Field(default=None, description="产品展示图片地址")
@@ -144,6 +144,12 @@ async def query_product_clause(user_question: str,product_id: int):
                  正文内容:条款原文
              若未检索到任何相关内容，则返回空字符串。
     """
+    # 检索入口拦截: 产品必须存在且处于上架状态(下架产品保留向量但不允许被检索)
+    async with AsyncSessionFactory() as session:
+        product = await session.get(Product, product_id)
+        if product is None or product.status != "active":
+            return "该产品当前不可用，无法查询条款"
+
     parent_chunks = await question_retriever.retrieve(question=user_question,product_id=product_id)
 
     if not parent_chunks:

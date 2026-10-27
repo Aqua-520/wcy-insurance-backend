@@ -11,7 +11,7 @@ class ProductResponse(BaseModel):
 
     id: int
     name: str
-    clause_name: str
+    clause_name: Optional[str] = None
     category: str
     insurer: str
     image_url: Optional[str] = None

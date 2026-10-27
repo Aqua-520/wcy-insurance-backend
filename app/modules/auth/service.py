@@ -45,5 +45,12 @@ class AuthService:
 
     @staticmethod
     def issue_token(user: User) -> str:
-        """为用户签发 access_token"""
-        return create_access_token(user.id, extra={"username": user.username})
+        """为用户签发 access_token。
+
+        scope=user 用于与后台管理员令牌(scope=admin)做域隔离:
+        两种账号的 id 会数值碰撞, 不能只靠 id 查表区分。
+        """
+        return create_access_token(
+            user.id,
+            extra={"username": user.username, "scope": "user", "realm": "user"},
+        )

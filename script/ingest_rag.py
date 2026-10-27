@@ -27,6 +27,7 @@ def create_vector_store() -> Milvus:
     embeddings = OllamaEmbeddings(
         model="qwen3-embedding:0.6b",
         dimensions=1024,
+        client_kwargs={"trust_env": False},
     )
     return Milvus(
         embedding_function=embeddings,
@@ -36,7 +37,7 @@ def create_vector_store() -> Milvus:
         ),
         vector_field=["dense", "sparse"],
         connection_args={"uri": settings.rag.milvus_url},
-        auto_id=True,
+        auto_id=False,
     )
 
 
@@ -65,6 +66,15 @@ async def main():
 
         # 循环产品列表
         for index, product in enumerate(all_product_list, start=1):
+            # 草稿或未绑定条款的产品跳过
+            if not product.clause_name:
+                logger.warning(
+                    "产品未绑定条款文件, 跳过",
+                    product_id=product.id,
+                    product_name=product.name,
+                )
+                continue
+
             logger.info(
                 "开始处理保险产品",
                 progress=f"{index}/{len(all_product_list)}",
@@ -72,7 +82,19 @@ async def main():
                 product_name=product.name,
             )
             # 调用流水线方法
-            await pipeline.product_info_to_store(product)
+            report = await pipeline.product_info_to_store(product)
+            logger.info(
+                "产品入库完成",
+                progress=f"{index}/{len(all_product_list)}",
+                product_id=product.id,
+                product_name=product.name,
+                total=report["total"],
+                tables=report["tables"],
+                added=report["added"],
+                changed=report["changed"],
+                unchanged=report["unchanged"],
+                deleted=report["deleted"],
+            )
 
         logger.info('RAG知识库构建完毕✅️')
     except Exception as e:

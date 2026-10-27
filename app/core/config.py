@@ -103,6 +103,46 @@ class RagSettings(EnvSettings):
     def milvus_url(self) -> str:
         return f"http://{self.milvus_host}:{self.milvus_port}"
 
+
+# 后台管理员初始账号配置(仅种子脚本使用)
+class AdminSettings(EnvSettings):
+    init_username: str = Field(alias="ADMIN_INIT_USERNAME", default="admin")
+    init_password: str = Field(alias="ADMIN_INIT_PASSWORD", default="admin123456")
+    init_display_name: str = Field(alias="ADMIN_INIT_DISPLAY_NAME", default="系统管理员")
+
+DEFAULT_ADMIN_PASSWORD = "admin123456"
+
+
+# 知识库上传文件存储配置
+class StorageSettings(EnvSettings):
+    kb_root: str = Field(alias="KB_STORAGE_ROOT", default="data")
+    max_upload_mb: int = Field(alias="KB_MAX_UPLOAD_MB", default=50)
+    mineru_timeout_seconds: int = Field(alias="MINERU_TIMEOUT_SECONDS", default=300)
+
+    @property
+    def root_path(self) -> Path:
+        """存储根目录(默认 agent-service/data)"""
+        return APP_ROOT / self.kb_root
+
+    @property
+    def md_dir(self) -> Path:
+        """流水线唯一读取的 Markdown 目录"""
+        return self.root_path / "raw" / "md"
+
+    @property
+    def pdf_dir(self) -> Path:
+        """原始 PDF 存放目录"""
+        return self.root_path / "raw" / "kb"
+
+    @property
+    def tmp_dir(self) -> Path:
+        """上传临时文件目录"""
+        return self.root_path / "tmp"
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_mb * 1024 * 1024
+
 class Settings(BaseSettings):
     app: AppSettings = Field(default_factory=AppSettings)
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
@@ -112,6 +152,9 @@ class Settings(BaseSettings):
     auth: AuthSettings = Field(default_factory=AuthSettings)
     # 新增环境变量挂载
     rag: RagSettings = Field(default_factory=RagSettings)
+    # 后台管理员与上传存储配置
+    admin: AdminSettings = Field(default_factory=AdminSettings)
+    storage: StorageSettings = Field(default_factory=StorageSettings)
 
     # 当前环境标识(dev/prod), 方便日志与排查
     env: str = APP_ENV
@@ -128,6 +171,15 @@ class Settings(BaseSettings):
                     "生产环境(APP_ENV=prod)检测到 JWT_SECRET 仍为开发默认值，"
                     "请通过环境变量注入一个随机强密钥"
                 )
+            # 生产环境必须覆盖管理员默认密码
+            if self.admin.init_password == DEFAULT_ADMIN_PASSWORD:
+                raise ValueError(
+                    "生产环境(APP_ENV=prod)检测到 ADMIN_INIT_PASSWORD 仍为开发默认值，"
+                    "请通过环境变量注入强密码"
+                )
+            # 上传目录必须是绝对安全配置? 这里仅校验大小上限合理
+            if self.storage.max_upload_mb <= 0:
+                raise ValueError("KB_MAX_UPLOAD_MB 必须大于 0")
         return self
 
 # 项目启动直接初始化

@@ -26,9 +26,21 @@ async def lifespan(app: FastAPI):
     from app.agents.orchestrator import init_router_agent
     # 导入向量数据库初始化模块
     from app.rag import close_vector_store
+    from app.rag.jobs import recover_interrupted_jobs
+    from app.rag.storage import ensure_storage_dirs
     try:
         # sqlalchemy框架初始化连接池
         await check_database()
+
+        # 确保知识库上传目录存在
+        ensure_storage_dirs(
+            settings.storage.md_dir,
+            settings.storage.pdf_dir,
+            settings.storage.tmp_dir,
+        )
+
+        # 重启后把中断的入库任务标记为失败, 避免一直 pending
+        await recover_interrupted_jobs()
 
         # 初始化langchain的连接池
         checkpointer = await init_checkpointer()
@@ -65,6 +77,13 @@ from app.modules.auth.router import router as auth_router
 app.include_router(auth_router)
 from app.modules.product.router import router as product_router
 app.include_router(product_router)
+# 后台管理: 管理员认证 / 产品管理 / 知识库管理
+from app.modules.admin.router import router as admin_auth_router
+app.include_router(admin_auth_router)
+from app.modules.admin.product_router import router as admin_product_router
+app.include_router(admin_product_router)
+from app.modules.kb.router import router as admin_kb_router
+app.include_router(admin_kb_router)
 # 导入会话管理路由
 from app.modules.chat_thread.router import router as chat_thread_router
 app.include_router(chat_thread_router)

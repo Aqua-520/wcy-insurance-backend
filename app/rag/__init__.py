@@ -11,7 +11,12 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 # 初始化向量模型
-ollama_embeddings = OllamaEmbeddings(model="qwen3-embedding:0.6b", dimensions=1024)
+# trust_env=False: 本地 Ollama 不能被 Windows/系统代理接管(会返回 502)
+ollama_embeddings = OllamaEmbeddings(
+    model="qwen3-embedding:0.6b",
+    dimensions=1024,
+    client_kwargs={"trust_env": False},
+)
 
 logger.info('ollama向量模型创建成功✅️')
 

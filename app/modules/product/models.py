@@ -29,8 +29,8 @@ class Product(Base,CreateAtMixin,UpdateAtMixin):
     name: Mapped[str] = mapped_column(
         String(200), nullable=False, comment="商城展示名称"
     )
-    clause_name: Mapped[str] = mapped_column(
-        String(300), nullable=False, comment="主条款文件名，包含 .pdf 后缀"
+    clause_name: Mapped[Optional[str]] = mapped_column(
+        String(300), nullable=True, comment="主条款文件名，包含 .pdf 后缀；草稿产品可为空"
     )
     category: Mapped[str] = mapped_column(
         String(50),

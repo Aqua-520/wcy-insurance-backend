@@ -36,6 +36,13 @@ async def get_current_user(
 
     # 2.验签并解析令牌
     payload = decode_access_token(credentials.credentials)
+
+    # 管理员令牌(scope=admin)绝不能在用户接口使用:
+    # admin_users.id 与 users.id 可能相同, 必须靠 scope 而不是 id 区分。
+    # 旧版用户令牌没有 scope 字段, 继续按普通用户处理以保持兼容。
+    if payload.get("scope") == "admin" or payload.get("realm") == "admin":
+        raise TokenInvalidError
+
     sub = payload.get("sub")
     try:
         user_id = int(sub)
