@@ -6,8 +6,12 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import StateGraph
 from langgraph.types import Command
 
+from app.core.logging import get_logger
+
 from .chit_chat import ChitChatGraph
 from .schemas import InsuranceAgentState, RouterResultModel, Intent
+
+logger = get_logger(__name__)
 from langgraph.constants import START, END
 """
     以下都为子图导入
@@ -91,14 +95,71 @@ async def router(state: InsuranceAgentState) -> Command[Intent]:
 #     return {"messages": [AIMessage("保险推荐工作流暂未接入。")]}
 
 
-# 4.理赔节点
+# 4.理赔节点: 真实创建理赔咨询工单, 由客服跟进
 async def claim_node(state: InsuranceAgentState) -> dict:
-    return {"messages": [AIMessage("理赔工作流暂未接入。")]}
+    ticket_no = await _create_ticket_for_current_turn("claim", state)
+    if ticket_no:
+        return {"messages": [AIMessage(
+            f"已为你创建理赔咨询工单，受理编号 {ticket_no}。"
+            "客服领取后会尽快与你联系，你也可以在「我的服务单」中补充材料。"
+        )]}
+    return {"messages": [AIMessage("工单创建失败，请稍后重试，或直接留言申请人工服务。")]}
 
 
-# 5.人工节点
-def human_handoff_node(state: InsuranceAgentState) -> dict:
-    return {"messages": [AIMessage("已记录转人工请求，后续可接入人工客服系统。")]}
+# 5.人工节点: 投诉/高风险/明确要求人工 → 统一工单模型
+async def human_handoff_node(state: InsuranceAgentState) -> dict:
+    ticket_no = await _create_ticket_for_current_turn("handoff", state)
+    if ticket_no:
+        return {"messages": [AIMessage(
+            f"已为你转接人工服务，受理编号 {ticket_no}。"
+            "客服领取后会尽快回复你，你也可以在「我的服务单」里补充说明。"
+        )]}
+    return {"messages": [AIMessage("工单创建失败，请稍后重试。")]}
+
+
+async def _create_ticket_for_current_turn(ticket_type: str, state: InsuranceAgentState) -> str | None:
+    """给当前用户+当前会话创建(或复用)一张工单, 返回受理编号。
+
+    用户身份来自路由层注入的运行时上下文; 拿不到身份时不建单, 不报错中断对话。
+    """
+    from langchain_core.runnables import RunnableConfig
+    from langgraph.config import get_config  # type: ignore[attr-defined]
+    from langgraph.runtime import get_runtime
+
+    from app.infra.database import AsyncSessionFactory
+    from app.modules.ticket.service import TicketService
+    from .schemas import InsuranceAgentContext
+
+    try:
+        runtime = get_runtime(InsuranceAgentContext)
+        user_id: int | None = runtime.context.user_id if runtime.context else None
+    except Exception:
+        user_id = None
+    if user_id is None:
+        return None
+
+    # 用户最新一条消息作为工单摘要, 供客服判断诉求
+    summary = ""
+    for message in reversed(state.get("messages", [])):
+        if message.type == "human" and message.content:
+            summary = str(message.content)[:500]
+            break
+
+    try:
+        config: RunnableConfig = get_config()
+        thread_id: str | None = config.get("configurable", {}).get("thread_id")
+        async with AsyncSessionFactory() as session:
+            async with session.begin():
+                ticket = await TicketService(session).create_from_ai(
+                    user_id=user_id,
+                    ticket_type=ticket_type,
+                    summary=summary,
+                    thread_id=thread_id,
+                )
+            return ticket.ticket_no
+    except Exception:
+        logger.exception("创建人工工单失败")
+        return None
 
 
 # 6.fallback节点
