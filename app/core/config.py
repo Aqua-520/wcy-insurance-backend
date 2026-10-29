@@ -109,6 +109,7 @@ class AdminSettings(EnvSettings):
     init_username: str = Field(alias="ADMIN_INIT_USERNAME", default="admin")
     init_password: str = Field(alias="ADMIN_INIT_PASSWORD", default="admin123456")
     init_display_name: str = Field(alias="ADMIN_INIT_DISPLAY_NAME", default="系统管理员")
+    init_role: str = Field(alias="ADMIN_INIT_ROLE", default="admin")
 
 DEFAULT_ADMIN_PASSWORD = "admin123456"
 

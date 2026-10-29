@@ -1,5 +1,5 @@
 """
-知识库管理接口(仅管理员可访问)
+知识库管理接口(管理员与知识运营岗位可访问)
 """
 from uuid import UUID
 
@@ -16,7 +16,7 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infra.database import get_session
-from app.modules.admin.dependencies import CurrentAdmin, get_current_admin
+from app.modules.admin.dependencies import CurrentAdmin, get_current_admin, require_role
 from app.rag.jobs import run_ingestion_job
 
 from .schemas import (
@@ -34,7 +34,12 @@ from .schemas import (
 )
 from .service import KbService
 
-router = APIRouter(prefix="/api/v1/admin/kb", tags=["admin-kb"])
+# 知识库管理: 管理员与知识运营岗位可访问
+router = APIRouter(
+    prefix="/api/v1/admin/kb",
+    tags=["admin-kb"],
+    dependencies=[Depends(require_role("kb"))],
+)
 
 
 # ---------- 文档 ----------

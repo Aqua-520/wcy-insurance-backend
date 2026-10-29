@@ -25,6 +25,13 @@ class AdminInactiveError(ApplicationError):
     message = "管理员账号已被停用"
 
 
+class AdminForbiddenError(ApplicationError):
+    """当前岗位无权访问该接口"""
+    status_code = 403
+    code = "admin_forbidden"
+    message = "当前岗位无权执行该操作"
+
+
 class _MessageError(ApplicationError):
     """允许在抛出时覆盖默认 message 的业务异常基类"""
 

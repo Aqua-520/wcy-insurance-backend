@@ -41,5 +41,6 @@ class AdminAuthService:
                 "username": admin.username,
                 "scope": "admin",
                 "realm": "admin",
+                "role": admin.role,
             },
         )

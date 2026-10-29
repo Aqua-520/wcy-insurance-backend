@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infra.database import get_session
 
-from .dependencies import CurrentAdmin, get_current_admin
+from .dependencies import CurrentAdmin, get_current_admin, require_role
 from .product_schemas import (
     ProductActivateRequest,
     ProductAdminCreate,
@@ -17,7 +17,12 @@ from .product_schemas import (
 )
 from .product_service import AdminProductService
 
-router = APIRouter(prefix="/api/v1/admin/products", tags=["后台管理-产品"])
+# 产品管理仅管理员岗位可操作; require_role() 不传岗位即只有 admin 通过
+router = APIRouter(
+    prefix="/api/v1/admin/products",
+    tags=["后台管理-产品"],
+    dependencies=[Depends(require_role())],
+)
 
 
 async def init_product_service(session: AsyncSession = Depends(get_session)) -> AdminProductService:

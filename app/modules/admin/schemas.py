@@ -20,6 +20,7 @@ class AdminSummary(BaseModel):
     username: str
     display_name: Optional[str] = None
     status: str
+    role: str = "admin"
 
 
 class AdminTokenResponse(BaseModel):

@@ -27,3 +27,9 @@ class AdminUser(Base, CreateAtMixin, UpdateAtMixin):
         server_default=text("'active'::character varying"),
         comment="管理员状态: active / disabled",
     )
+    role: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        server_default=text("'admin'::character varying"),
+        comment="岗位角色: admin(管理员) / cs(客服) / kb(知识运营)",
+    )

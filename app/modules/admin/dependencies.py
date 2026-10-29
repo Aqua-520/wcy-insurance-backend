@@ -7,7 +7,7 @@ FastAPI 依赖: 解析并校验后台管理员身份。
 - 旧版无 scope 的用户令牌不会被当作管理员。
 """
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials
@@ -19,7 +19,7 @@ from app.modules.auth.security import decode_access_token
 # 独立 session, 避免与请求级 session 的事务状态互相影响
 from app.infra.database import AsyncSessionFactory
 
-from .exceptions import AdminInactiveError, AdminTokenInvalidError
+from .exceptions import AdminForbiddenError, AdminInactiveError, AdminTokenInvalidError
 from .repository import AdminRepository
 
 
@@ -28,6 +28,8 @@ class CurrentAdmin:
     """解析出的当前管理员(可信身份)"""
     admin_id: int
     username: str
+    # 岗位角色: admin / cs / kb; 以数据库实时值为准, 不信任令牌里的声明
+    role: str = "admin"
 
 
 async def get_current_admin(
@@ -56,4 +58,22 @@ async def get_current_admin(
             raise AdminTokenInvalidError
         if admin.status != "active":
             raise AdminInactiveError
-        return CurrentAdmin(admin_id=admin.id, username=admin.username)
+        return CurrentAdmin(admin_id=admin.id, username=admin.username, role=admin.role)
+
+
+def require_role(*roles: str) -> Callable[..., CurrentAdmin]:
+    """岗位鉴权依赖工厂: 只有列出的岗位(以及 admin 管理员)可以访问。
+
+    用法(挂在路由上):
+        async def some_api(current: CurrentAdmin = Depends(require_role("cs"))):
+    """
+
+    async def dependency(
+        current: CurrentAdmin = Depends(get_current_admin),
+    ) -> CurrentAdmin:
+        # 管理员岗位默认拥有全部权限, 其余岗位必须显式列出
+        if current.role != "admin" and current.role not in roles:
+            raise AdminForbiddenError
+        return current
+
+    return dependency
