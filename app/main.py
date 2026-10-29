@@ -90,6 +90,19 @@ app.include_router(chat_thread_router)
 # 导入大模型消息调用的路由
 from app.modules.chat.router import router as chat_router
 app.include_router(chat_router)
+# 工单: 客户侧 + 客服侧(统一人工受理模型)
+from app.modules.ticket.router import router as ticket_router
+app.include_router(ticket_router)
+from app.modules.ticket.staff_router import router as ticket_staff_router
+app.include_router(ticket_staff_router)
+# 投保意向单: 客户提交 + 客服跟进(替掉假支付流程)
+from app.modules.intent.router import router as intent_router
+app.include_router(intent_router)
+from app.modules.intent.staff_router import router as intent_staff_router
+app.include_router(intent_staff_router)
+# 保险方案只读查询(前端刷新方案项状态)
+from app.modules.insurance_plan.router import router as insurance_plan_router
+app.include_router(insurance_plan_router)
 
 # CORS配置，解决跨域问题
 # 放行5173端口的访问,让浏览器忽略跨域问题

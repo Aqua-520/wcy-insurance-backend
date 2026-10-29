@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import BigInteger, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.common.models import Base, CreateAtMixin, UpdateAtMixin
 
@@ -52,6 +52,15 @@ class InsurancePlan(Base, CreateAtMixin, UpdateAtMixin):
         comment='方案投保状态: uninsured-未投保、applying-投保中、insured-已投保'
     )
 
+    items: Mapped[list["InsurancePlanItem"]] = relationship(
+        back_populates="plan",
+        order_by="InsurancePlanItem.priority",
+        lazy="raise",
+        # 表结构无外键约束(旧库迁移遗留), 手动指定 join 条件
+        primaryjoin="InsurancePlan.id == foreign(InsurancePlanItem.plan_id)",
+        viewonly=True,
+    )
+
 
 # 某个方案中关联的单个保险产品类对象
 class InsurancePlanItem(Base, CreateAtMixin, UpdateAtMixin):
@@ -94,4 +103,11 @@ class InsurancePlanItem(Base, CreateAtMixin, UpdateAtMixin):
         String(30), nullable=False,
         server_default="uninsured",
         comment='方案项投保状态: uninsured-未投保、insured-已投保'
+    )
+
+    plan: Mapped["InsurancePlan"] = relationship(
+        back_populates="items",
+        lazy="raise",
+        primaryjoin="InsurancePlan.id == foreign(InsurancePlanItem.plan_id)",
+        viewonly=True,
     )

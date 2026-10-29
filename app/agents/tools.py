@@ -115,17 +115,47 @@ async def create_insurance_plan(insurance_data:InsurancePlanCreate,runtime:ToolR
         # 获取到保险产品业务层的对象
         insurance_plan_service = InsurancePlanService(session)
 
-        # 调用创建保险方案的方法,拿到返回的方案id
-        plan_id = await insurance_plan_service.create_insurance_plan(
+        # 调用创建保险方案的方法,拿到方案id和方案项id列表
+        plan_result = await insurance_plan_service.create_insurance_plan(
             user_id=runtime.context.user_id,
             insurance_data=insurance_data
         )
+        plan_id = plan_result["plan_id"]
+        saved_items = plan_result["items"]
+
+    # 把方案项(带 item_id/plan_id/status)作为附加信息推给前端,
+    # 前端据此渲染带"去投保"按钮的产品卡片, 否则流程到保存方案就断了
+    writer = get_stream_writer()
+    # 大模型传入的 items 里有产品名/险种等展示字段, 按 product_id 与入库结果对齐
+    item_by_product = {item["product_id"]: item["item_id"] for item in saved_items}
+    plan_items_payload = []
+    for item in insurance_data.items:
+        item_id = item_by_product.get(item.product_id)
+        if item_id is None:
+            continue
+        plan_items_payload.append({
+            "id": item_id,
+            "plan_id": plan_id,
+            "product_id": item.product_id,
+            "product_name": item.product_name,
+            "category": item.category,
+            "recommendation_reason": item.recommendation_reason,
+            # Decimal 转字符串, 避免 SSE JSON 序列化失败
+            "annual_premium_budget": (
+                str(item.annual_premium_budget) if item.annual_premium_budget is not None else None
+            ),
+            # 刚保存的方案项默认未投保
+            "status": "uninsured",
+        })
+    writer({"type": "additional_info", "data": {
+        "plan_items": plan_items_payload,
+    }})
 
     # 告诉大模型调用成功的消息
     return {
         "message":"保险方案创建成功",
         # plan_id是uuid格式,需要转换成字符串
-        "plan_id":str(plan_id)
+        "plan_id":plan_id
     }
 
 # 定义根据知识库查询方案的检索工具

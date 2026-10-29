@@ -26,8 +26,11 @@ from app.core.config import APP_ROOT, settings
 from app.common.models import Base
 from app.infra.database import AsyncSessionFactory, close_database, engine
 from app.modules.admin.models import AdminUser  # noqa: F401
+from app.modules.auth.models import User  # noqa: F401  tickets.user_id 外键需要
+from app.modules.intent.models import ApplicationIntent  # noqa: F401
 from app.modules.kb.models import IngestionJob, KbDocument  # noqa: F401
 from app.modules.product.models import Product
+from app.modules.ticket.models import Ticket, TicketMessage  # noqa: F401
 from app.rag.models import ParentChunk  # noqa: F401
 
 ALTER_STATEMENTS = [
@@ -39,6 +42,8 @@ ALTER_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_parent_chunks_product_hash ON parent_chunks(product_id, content_hash)",
     # 草稿产品
     "ALTER TABLE products ALTER COLUMN clause_name DROP NOT NULL",
+    # 岗位角色: admin(管理员) / cs(客服) / kb(知识运营)
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role VARCHAR(30) NOT NULL DEFAULT 'admin'",
 ]
 
 

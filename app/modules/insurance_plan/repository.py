@@ -16,7 +16,7 @@ class InsurancePlanRepository:
         self.session = session
 
     # 创建保险方案的方法
-    async def create_insurance_plan(self,user_id:int,insurance_plan_info:InsurancePlanCreate) -> InsurancePlan:
+    async def create_insurance_plan(self,user_id:int,insurance_plan_info:InsurancePlanCreate) -> tuple[InsurancePlan, list[InsurancePlanItem]]:
         """
         我们需要将业务层传入的pydantic类型的数据对象转换成orm对象
         进行数据库写入操作
@@ -64,6 +64,8 @@ class InsurancePlanRepository:
         ]
         # 将列表添加进数据库
         self.session.add_all(orm_product_list)
+        # 刷新拿方案项主键, 供业务层把 item_id 回传给前端
+        await self.session.flush()
 
-        # 返回转换完毕的plan表对象
-        return orm_insurance_plan
+        # 返回转换完毕的plan表对象和方案项列表
+        return orm_insurance_plan, orm_product_list
