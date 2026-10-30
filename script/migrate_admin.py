@@ -45,7 +45,10 @@ ALTER_STATEMENTS = [
     # 岗位角色: admin(管理员) / cs(客服) / kb(知识运营)
     "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role VARCHAR(30) NOT NULL DEFAULT 'admin'",
     # 知识库发布状态: false=候选(未发布), true=已发布(AI可检索)
-    "ALTER TABLE parent_chunks ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT FALSE",
+    # 存量行在功能上线前一直生效, 补列时保持已发布(DEFAULT TRUE 只影响已存在的行);
+    # 随后把默认值改为 FALSE, 今后新入库的块自动进入候选状态, 等人工发布。
+    "ALTER TABLE parent_chunks ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT TRUE",
+    "ALTER TABLE parent_chunks ALTER COLUMN is_published SET DEFAULT FALSE",
     "CREATE INDEX IF NOT EXISTS idx_parent_chunks_published ON parent_chunks(is_published)",
 ]
 

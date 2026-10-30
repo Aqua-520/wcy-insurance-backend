@@ -19,6 +19,8 @@ from app.infra.database import AsyncSessionFactory
 from app.modules.kb.models import IngestionJob, KbDocument
 from app.modules.product.models import Product
 
+from .models import ParentChunk
+
 from .clients import close_vector_store, create_vector_store
 from .converters import ConversionError, convert_pdf_to_markdown
 from .maintenance import purge_product_knowledge
@@ -174,6 +176,24 @@ async def run_ingestion_job(job_id: UUID) -> None:
 
             product_view = snapshot.product
 
+            # 重建只刷新内容, 不动发布开关:
+            # 入库前记录该产品是否处于"已发布"状态, 入库成功后恢复。
+            # 生效中的知识库重建后继续生效; 从未发布的保持候选。
+            was_published = False
+            if snapshot.product_id:
+                async with AsyncSessionFactory() as _s:
+                    was_published = bool(
+                        await _s.scalar(
+                            select(func.count())
+                            .select_from(ParentChunk)
+                            .where(
+                                ParentChunk.product_id == snapshot.product_id,
+                                ParentChunk.is_published == True,  # noqa: E712
+                            )
+                            .limit(1)
+                        )
+                    )
+
             if snapshot.force_full and snapshot.product_id:
                 current_stage = "purging"
                 await _stage_callback(job_id, "purging")
@@ -216,6 +236,21 @@ async def run_ingestion_job(job_id: UUID) -> None:
                 product_view,  # type: ignore[arg-type]
                 on_stage=_on_stage,
             )
+
+            # 重建前处于已发布状态的, 入库后恢复发布(内容更新但开关不变);
+            # 从未发布过的保持候选, 等人工发布审核。
+            if was_published and snapshot.product_id:
+                async with AsyncSessionFactory() as _s:
+                    async with _s.begin():
+                        await _s.execute(
+                            update(ParentChunk)
+                            .where(ParentChunk.product_id == snapshot.product_id)
+                            .values(is_published=True)
+                        )
+                logger.info(
+                    "重建前处于已发布状态, 已恢复发布",
+                    product_id=snapshot.product_id,
+                )
 
             # 入库成功后才把产品指向新条款
             async with AsyncSessionFactory() as session:

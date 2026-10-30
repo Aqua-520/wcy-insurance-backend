@@ -80,6 +80,8 @@ class ProductKbStats(BaseModel):
     chunk_count: int = 0
     text_count: int = 0
     table_count: int = 0
+    published_count: int = 0
+    candidate_count: int = 0
     has_markdown: bool = False
     document_id: Optional[UUID] = None
     document_status: Optional[str] = None
@@ -93,6 +95,7 @@ class ChunkItem(BaseModel):
     chunk_index: int
     content_hash: str
     content: str
+    is_published: bool = False
 
 
 class ChunkListResponse(BaseModel):

@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import UploadFile
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -399,6 +399,8 @@ class KbService:
             chunk_count=await self.repository.count_chunks(product_id),
             text_count=await self.repository.count_chunks(product_id, "text"),
             table_count=await self.repository.count_chunks(product_id, "table"),
+            published_count=await self.repository.count_chunks(product_id, published=True),
+            candidate_count=await self.repository.count_chunks(product_id, published=False),
             has_markdown=has_markdown,
             document_id=document.id if document else None,
             document_status=document.status if document else None,
@@ -425,6 +427,7 @@ class KbService:
                 chunk_index=chunk.chunk_index,
                 content_hash=chunk.content_hash,
                 content=chunk.content if include_content else (chunk.content or "")[:200],
+                is_published=bool(chunk.is_published),
             )
             for chunk in chunks
         ]
@@ -503,11 +506,13 @@ class KbService:
         self,
         product_id: int,
         admin_id: int,
+        admin_role: str = "kb",
         notes: str = "",
     ) -> dict:
         """发布产品全部候选知识块: is_published 置 true, 记录发布日志。
 
-        验收要求(清单28): 构建人不能发布自己的版本, 此处校验上传人 ≠ 发布人。
+        验收要求(清单28): 知识运营岗位构建人不能发布自己的版本;
+        admin(超级管理员)不受此限制, 可自行审核发布。
         """
         from sqlalchemy import update as sa_update
         from app.rag.models import KbRelease, ParentChunk
@@ -522,14 +527,16 @@ class KbService:
         if not candidate_count:
             raise ValueError("没有待发布的候选知识块")
 
-        # 检查最近一次入库的构建人, 禁止自己发自己的版本
+        # 查最近一次入库任务(记录构建人, 无论角色都要查)
         last_job = await self.session.scalar(
             select(IngestionJob)
             .where(IngestionJob.product_id == product_id)
             .order_by(IngestionJob.created_at.desc())
             .limit(1)
         )
-        if last_job and last_job.admin_user_id == admin_id:
+
+        # kb 岗位: 禁止自己发自己的版本; admin(超级管理员)豁免
+        if admin_role != "admin" and last_job and last_job.admin_user_id == admin_id:
             raise ValueError("构建人不能发布自己的版本, 请让其他管理员审核发布")
 
         # 批量发布

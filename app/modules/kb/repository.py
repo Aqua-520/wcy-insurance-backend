@@ -123,12 +123,19 @@ class KbRepository:
         return list(rows.all())
 
     # ---------- 产品知识块 ----------
-    async def count_chunks(self, product_id: int, doc_type: str | None = None) -> int:
+    async def count_chunks(
+        self,
+        product_id: int,
+        doc_type: str | None = None,
+        published: bool | None = None,
+    ) -> int:
         stmt = select(func.count()).select_from(ParentChunk).where(
             ParentChunk.product_id == product_id
         )
         if doc_type:
             stmt = stmt.where(ParentChunk.doc_type == doc_type)
+        if published is not None:
+            stmt = stmt.where(ParentChunk.is_published == published)
         return int(await self.session.scalar(stmt) or 0)
 
     async def list_chunks(
