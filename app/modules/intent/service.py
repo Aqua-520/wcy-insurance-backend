@@ -39,7 +39,8 @@ class IntentService:
             status="pending",
         )
         self.session.add(intent)
-        await self.session.flush()
+        # 请求级 session 不会自动提交, 必须显式 commit 否则请求结束即回滚
+        await self.session.commit()
         return intent
 
     async def list_by_user(self, user_id: int) -> list[ApplicationIntent]:
@@ -84,4 +85,5 @@ class IntentService:
         intent.handled_admin_id = admin_id
         if handle_note:
             intent.handle_note = handle_note
+        await self.session.commit()
         return intent

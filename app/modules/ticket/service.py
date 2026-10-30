@@ -42,7 +42,8 @@ class TicketService:
             summary=summary,
         )
         self.session.add(ticket)
-        await self.session.flush()
+        # 请求级 session 不会自动提交, 必须显式 commit 否则请求结束即回滚
+        await self.session.commit()
         return ticket
 
     async def create_from_ai(
@@ -80,7 +81,7 @@ class TicketService:
             raise TicketInvalidStateError("工单已关闭，如需继续处理请先重新打开")
         message = TicketMessage(ticket_id=ticket.id, sender_role="customer", content=content)
         self.session.add(message)
-        await self.session.flush()
+        await self.session.commit()
         return message
 
     async def reopen(self, ticket: Ticket) -> Ticket:
@@ -89,6 +90,7 @@ class TicketService:
             raise TicketInvalidStateError("只有已关闭的工单可以重新打开")
         ticket.status = "reopened"
         ticket.assigned_admin_id = None
+        await self.session.commit()
         return ticket
 
     # ---------- 客服侧 ----------
@@ -120,6 +122,7 @@ class TicketService:
             raise TicketInvalidStateError("该工单已被领取或已关闭")
         ticket.status = "processing"
         ticket.assigned_admin_id = admin_id
+        await self.session.commit()
         return ticket
 
     async def reply(self, ticket: Ticket, admin_id: int, content: str) -> TicketMessage:
@@ -132,7 +135,7 @@ class TicketService:
             ticket_id=ticket.id, sender_role="staff", admin_id=admin_id, content=content
         )
         self.session.add(message)
-        await self.session.flush()
+        await self.session.commit()
         return message
 
     async def close(self, ticket: Ticket, admin_id: int) -> Ticket:
@@ -141,6 +144,7 @@ class TicketService:
             raise TicketInvalidStateError("请先领取该工单再关闭")
         ticket.status = "closed"
         ticket.closed_at = datetime.now(timezone.utc).isoformat()
+        await self.session.commit()
         return ticket
 
     async def get_detail(self, ticket_id: int) -> Ticket:

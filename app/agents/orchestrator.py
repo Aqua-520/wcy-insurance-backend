@@ -149,13 +149,13 @@ async def _create_ticket_for_current_turn(ticket_type: str, state: InsuranceAgen
         config: RunnableConfig = get_config()
         thread_id: str | None = config.get("configurable", {}).get("thread_id")
         async with AsyncSessionFactory() as session:
-            async with session.begin():
-                ticket = await TicketService(session).create_from_ai(
-                    user_id=user_id,
-                    ticket_type=ticket_type,
-                    summary=summary,
-                    thread_id=thread_id,
-                )
+            # 服务内部自带 commit, 这里不能再包 session.begin()
+            ticket = await TicketService(session).create_from_ai(
+                user_id=user_id,
+                ticket_type=ticket_type,
+                summary=summary,
+                thread_id=thread_id,
+            )
             return ticket.ticket_no
     except Exception:
         logger.exception("创建人工工单失败")

@@ -1,6 +1,7 @@
 """
 工单请求/响应模型
 """
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,8 +17,9 @@ class TicketSummary(BaseModel):
     status: str
     summary: str
     assigned_admin_id: Optional[int] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    # datetime 由 pydantic 自动序列化为 ISO 字符串返回给前端
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class TicketMessageItem(BaseModel):
@@ -27,7 +29,7 @@ class TicketMessageItem(BaseModel):
     id: int
     sender_role: str
     content: str
-    created_at: Optional[str] = None
+    created_at: Optional[datetime] = None
 
 
 class TicketDetail(TicketSummary):
