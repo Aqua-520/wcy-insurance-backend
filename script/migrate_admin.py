@@ -27,6 +27,7 @@ from app.common.models import Base
 from app.infra.database import AsyncSessionFactory, close_database, engine
 from app.modules.admin.models import AdminUser  # noqa: F401
 from app.modules.auth.models import User  # noqa: F401  tickets.user_id 外键需要
+from app.modules.feedback.models import AnswerFeedback  # noqa: F401
 from app.modules.intent.models import ApplicationIntent  # noqa: F401
 from app.modules.kb.models import IngestionJob, KbDocument  # noqa: F401
 from app.modules.product.models import Product

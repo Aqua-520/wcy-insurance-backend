@@ -103,6 +103,11 @@ app.include_router(intent_staff_router)
 # 保险方案只读查询(前端刷新方案项状态)
 from app.modules.insurance_plan.router import router as insurance_plan_router
 app.include_router(insurance_plan_router)
+# 问答反馈质量闭环: 客户点赞点踩 + 后台归因改进
+from app.modules.feedback.router import router as feedback_router
+app.include_router(feedback_router)
+from app.modules.feedback.staff_router import router as feedback_staff_router
+app.include_router(feedback_staff_router)
 
 # CORS配置，解决跨域问题
 # 放行5173端口的访问,让浏览器忽略跨域问题
