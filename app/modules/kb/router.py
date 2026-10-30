@@ -249,7 +249,7 @@ async def publish_chunks(
     from fastapi import HTTPException
     try:
         result = await KbService(session).publish_product_chunks(
-            product_id, admin.admin_id, notes
+            product_id, admin.admin_id, admin.role, notes
         )
         return result
     except ValueError as e:
