@@ -101,7 +101,7 @@ async def claim_node(state: InsuranceAgentState) -> dict:
     if ticket_no:
         return {"messages": [AIMessage(
             f"已为你创建理赔咨询工单，受理编号 {ticket_no}。"
-            "客服领取后会尽快与你联系，你也可以在「我的服务单」中补充材料。"
+            "客服领取后会尽快与你联系，你也可以在「我的」中补充材料。"
         )]}
     return {"messages": [AIMessage("工单创建失败，请稍后重试，或直接留言申请人工服务。")]}
 
@@ -112,7 +112,7 @@ async def human_handoff_node(state: InsuranceAgentState) -> dict:
     if ticket_no:
         return {"messages": [AIMessage(
             f"已为你转接人工服务，受理编号 {ticket_no}。"
-            "客服领取后会尽快回复你，你也可以在「我的服务单」里补充说明。"
+            "客服领取后会尽快回复你，你也可以在「我的」里补充说明。"
         )]}
     return {"messages": [AIMessage("工单创建失败，请稍后重试。")]}
 
