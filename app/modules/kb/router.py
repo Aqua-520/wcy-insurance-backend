@@ -235,3 +235,49 @@ async def purge_chunks(
     session: AsyncSession = Depends(get_session),
 ) -> PurgeChunksResponse:
     return await KbService(session).purge_chunks(product_id)
+
+
+# ---------- 版本发布管理 ----------
+@router.post("/products/{product_id}/publish", summary="发布产品知识块(候选→已发布)")
+async def publish_chunks(
+    product_id: int,
+    notes: str = "",
+    admin: CurrentAdmin = Depends(require_role("kb")),
+    session: AsyncSession = Depends(get_session),
+):
+    """发布候选知识块, 发布后 AI 才能检索到。构建人不能发自己的版本(清单28)。"""
+    from fastapi import HTTPException
+    try:
+        result = await KbService(session).publish_product_chunks(
+            product_id, admin.admin_id, notes
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post("/products/{product_id}/retract", summary="撤回产品知识块(已发布→候选)")
+async def retract_chunks(
+    product_id: int,
+    notes: str = "",
+    admin: CurrentAdmin = Depends(require_role("kb")),
+    session: AsyncSession = Depends(get_session),
+):
+    """撤回已发布知识块, 撤回后 AI 不再检索到。"""
+    from fastapi import HTTPException
+    try:
+        result = await KbService(session).retract_product_chunks(
+            product_id, admin.admin_id, notes
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.get("/products/{product_id}/releases", summary="查看产品发布历史")
+async def list_releases(
+    product_id: int,
+    _: CurrentAdmin = Depends(require_role("kb")),
+    session: AsyncSession = Depends(get_session),
+):
+    return await KbService(session).list_releases(product_id)

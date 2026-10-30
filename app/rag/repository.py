@@ -70,16 +70,19 @@ class ParentChunkRepository:
             delete(ParentChunk).where(ParentChunk.product_id == product_id)
         )
 
-    # 根据子块保存的所属父块id,查询到父块的内容
+    # 根据子块保存的所属父块id,查询到父块的内容(仅已发布的)
     async def find_by_parent_id(self, parent_ids: list[str]) -> list[ParentChunk]:
         """
-        向量检索命中后，按父块主键回 PG 取完整内容。
+        向量检索命中后，按父块主键回 PG 取完整内容(只返回已发布版本)。
         :param parent_ids: 父块主键（uuid 字符串）
         :return: 数据库查询结果列表对象
         """
         if not parent_ids:
             return []
         result = await self.session.scalars(
-            select(ParentChunk).where(ParentChunk.id.in_(parent_ids))
+            select(ParentChunk).where(
+                ParentChunk.id.in_(parent_ids),
+                ParentChunk.is_published == True,  # noqa: E712
+            )
         )
         return list(result.all())

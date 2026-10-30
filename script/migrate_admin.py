@@ -31,7 +31,7 @@ from app.modules.intent.models import ApplicationIntent  # noqa: F401
 from app.modules.kb.models import IngestionJob, KbDocument  # noqa: F401
 from app.modules.product.models import Product
 from app.modules.ticket.models import Ticket, TicketMessage  # noqa: F401
-from app.rag.models import ParentChunk  # noqa: F401
+from app.rag.models import KbRelease, ParentChunk  # noqa: F401
 
 ALTER_STATEMENTS = [
     # parent_chunks 结构漂移修复
@@ -44,6 +44,9 @@ ALTER_STATEMENTS = [
     "ALTER TABLE products ALTER COLUMN clause_name DROP NOT NULL",
     # 岗位角色: admin(管理员) / cs(客服) / kb(知识运营)
     "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role VARCHAR(30) NOT NULL DEFAULT 'admin'",
+    # 知识库发布状态: false=候选(未发布), true=已发布(AI可检索)
+    "ALTER TABLE parent_chunks ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT FALSE",
+    "CREATE INDEX IF NOT EXISTS idx_parent_chunks_published ON parent_chunks(is_published)",
 ]
 
 

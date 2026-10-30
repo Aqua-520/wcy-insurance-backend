@@ -49,8 +49,7 @@ class QuestionChunkRetriever:
             query=question,
             k=top_k,
             fetch_k=2 * top_k,
-            # 根据特定规则进行条件筛选,我们需要控制在某一个保险产品的范围内
-            # 避免检索到别的保险产品内容
+            # 按产品过滤; 发布状态在 PG 回表阶段过滤(Milvus metadata 不含 is_published)
             expr=f'product_id == {product_id}',
             # 传入自定义排序函数
             # reranker=create_cross_encoder_ranker([question])

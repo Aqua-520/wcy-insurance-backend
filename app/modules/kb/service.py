@@ -496,3 +496,120 @@ class KbService:
             except OSError as exc:
                 logger.warning("删除文件失败", path=str(path), error=str(exc))
         return deleted
+
+    # ---------- 版本发布管理 ----------
+
+    async def publish_product_chunks(
+        self,
+        product_id: int,
+        admin_id: int,
+        notes: str = "",
+    ) -> dict:
+        """发布产品全部候选知识块: is_published 置 true, 记录发布日志。
+
+        验收要求(清单28): 构建人不能发布自己的版本, 此处校验上传人 ≠ 发布人。
+        """
+        from sqlalchemy import update as sa_update
+        from app.rag.models import KbRelease, ParentChunk
+
+        # 检查是否有候选内容可发布
+        candidate_count = await self.session.scalar(
+            select(func.count()).select_from(ParentChunk).where(
+                ParentChunk.product_id == product_id,
+                ParentChunk.is_published == False,  # noqa: E712
+            )
+        )
+        if not candidate_count:
+            raise ValueError("没有待发布的候选知识块")
+
+        # 检查最近一次入库的构建人, 禁止自己发自己的版本
+        last_job = await self.session.scalar(
+            select(IngestionJob)
+            .where(IngestionJob.product_id == product_id)
+            .order_by(IngestionJob.created_at.desc())
+            .limit(1)
+        )
+        if last_job and last_job.admin_user_id == admin_id:
+            raise ValueError("构建人不能发布自己的版本, 请让其他管理员审核发布")
+
+        # 批量发布
+        await self.session.execute(
+            sa_update(ParentChunk)
+            .where(ParentChunk.product_id == product_id)
+            .values(is_published=True)
+        )
+
+        # 记录发布日志
+        release = KbRelease(
+            product_id=product_id,
+            status="published",
+            created_by_admin_id=last_job.admin_user_id if last_job else None,
+            published_by_admin_id=admin_id,
+            published_at=func.now(),
+            notes=notes,
+        )
+        self.session.add(release)
+        await self.session.commit()
+        return {"published_chunks": candidate_count, "release_id": release.id}
+
+    async def retract_product_chunks(
+        self,
+        product_id: int,
+        admin_id: int,
+        notes: str = "",
+    ) -> dict:
+        """撤回产品全部已发布知识块: is_published 置 false, AI 不再检索到。"""
+        from sqlalchemy import update as sa_update
+        from app.rag.models import KbRelease, ParentChunk
+
+        published_count = await self.session.scalar(
+            select(func.count()).select_from(ParentChunk).where(
+                ParentChunk.product_id == product_id,
+                ParentChunk.is_published == True,  # noqa: E712
+            )
+        )
+        if not published_count:
+            raise ValueError("没有已发布的知识块可撤回")
+
+        await self.session.execute(
+            sa_update(ParentChunk)
+            .where(ParentChunk.product_id == product_id)
+            .values(is_published=False)
+        )
+
+        release = KbRelease(
+            product_id=product_id,
+            status="retracted",
+            published_by_admin_id=admin_id,
+            retracted_at=func.now(),
+            notes=notes,
+        )
+        self.session.add(release)
+        await self.session.commit()
+        return {"retracted_chunks": published_count, "release_id": release.id}
+
+    async def list_releases(self, product_id: int) -> list[dict]:
+        """查看产品发布历史"""
+        from app.rag.models import KbRelease
+
+        releases = (
+            await self.session.scalars(
+                select(KbRelease)
+                .where(KbRelease.product_id == product_id)
+                .order_by(KbRelease.id.desc())
+            )
+        ).all()
+        return [
+            {
+                "id": r.id,
+                "product_id": r.product_id,
+                "status": r.status,
+                "created_by_admin_id": r.created_by_admin_id,
+                "published_by_admin_id": r.published_by_admin_id,
+                "published_at": r.published_at.isoformat() if r.published_at else None,
+                "retracted_at": r.retracted_at.isoformat() if r.retracted_at else None,
+                "notes": r.notes,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in releases
+        ]
