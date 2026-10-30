@@ -1,6 +1,7 @@
 """
     封装业务层功能集合的类
 """
+import asyncio
 from typing import AsyncIterator
 
 from fastapi.sse import ServerSentEvent
@@ -17,6 +18,7 @@ from .schemas import ChatRequestModel
 from app.agents.schemas import InsuranceAgentContext,AdditionalInfoData
 # 引用异步事件流合并
 # from aiostream import stream as astream
+from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -115,63 +117,114 @@ class ChatService:
         final_message_id: str|None = None
         # 定义字典来copy一份引用信息存到state中,state会自动调用checkpointer完成数据库持久化保存
         additional_info_data: AdditionalInfoData = {}
-        # 自定义解析事件流
-        async for event_dict in stream:
-            """
-                stream是一个迭代器
-                每次循环拿到的是一个字典
-            """
-            # 判断事件类型
-            method = event_dict['method']
-            # langgraph封装的消息事件叫messages
-            if method == 'messages':
-                # 解析里面的数据
-                data = event_dict['params']['data'][0]
-                if isinstance(data,AIMessage):
-                    # 如果第一条为手动构建的Ai消息,也就是我们要返回的固定消息,直接响应给前端
-                    yield ServerSentEvent(data=data.text,event='message') # 消息类型给前端做渲染用,data为消息内容
-                elif data.get('delta','') and data.get('delta').get('text'):
-                    # 这里是系统自动构建的消息,是一个字典,delta这个key里面的文本才是图封装的消息
-                    yield ServerSentEvent(data=data.get('delta').get('text'),event='message')
-                # 抓取流起始id
-                elif data.get('event') == 'message-start' and data.get('id'):
-                    final_message_id = data.get('id')
 
-            # 解析自定义消息类型
-            if method == 'custom':
-                # 将里面的data拿过来
-                data = event_dict['params']['data']
-                # 解析事件类型
-                if data.get('type') == 'additional_info':
-                    # 如果是这个事件,获取数据返回给前端
-                    # copy一份到变量里,存储到状态中
-                    additional_info_data = data.get('data')
-                    # 前端需要识别事件流event == additional_info做渲染
-                    yield ServerSentEvent(data=additional_info_data,event='additional_info')
+        # 模型失败降级(清单第9项): 首字超时/调用异常时给确定结果, 不伪装已生成
+        first_token_timeout = settings.llm.first_token_timeout
+        got_first_event = False
+        try:
+            event_iterator = stream.__aiter__()
+            while True:
+                try:
+                    if not got_first_event:
+                        # 还没有任何输出: 用首字超时保护, 超时视为模型不可用
+                        event_dict = await asyncio.wait_for(
+                            event_iterator.__anext__(), timeout=first_token_timeout
+                        )
+                    else:
+                        event_dict = await event_iterator.__anext__()
+                except StopAsyncIteration:
+                    break
+                got_first_event = True
 
-        # 检测中断,内部是抛出自定义异常的形式来中断函数的
-        interrupts = await stream.interrupts()
-        if interrupts:
-            logger.info(f'事件中断:{interrupts},需要用户进行手动操作了')
-            # 将中断信息以 SSE 事件推送给前端，等待用户输入/确认
-            for item in interrupts:
-                # 这个item.value刚好就是interrupt函数的入参数据
-                yield ServerSentEvent(data=item.value,event='interrupt')
+                """
+                    stream是一个迭代器
+                    每次循环拿到的是一个字典
+                """
+                # 判断事件类型
+                method = event_dict['method']
+                # langgraph封装的消息事件叫messages
+                if method == 'messages':
+                    # 解析里面的数据
+                    data = event_dict['params']['data'][0]
+                    if isinstance(data,AIMessage):
+                        # 如果第一条为手动构建的Ai消息,也就是我们要返回的固定消息,直接响应给前端
+                        yield ServerSentEvent(data=data.text,event='message') # 消息类型给前端做渲染用,data为消息内容
+                    elif data.get('delta','') and data.get('delta').get('text'):
+                        # 这里是系统自动构建的消息,是一个字典,delta这个key里面的文本才是图封装的消息
+                        yield ServerSentEvent(data=data.get('delta').get('text'),event='message')
+                    # 抓取流起始id
+                    elif data.get('event') == 'message-start' and data.get('id'):
+                        final_message_id = data.get('id')
 
+                # 解析自定义消息类型
+                if method == 'custom':
+                    # 将里面的data拿过来
+                    data = event_dict['params']['data']
+                    # 解析事件类型
+                    if data.get('type') == 'additional_info':
+                        # 如果是这个事件,获取数据返回给前端
+                        # copy一份到变量里,存储到状态中
+                        additional_info_data = data.get('data')
+                        # 前端需要识别事件流event == additional_info做渲染
+                        yield ServerSentEvent(data=additional_info_data,event='additional_info')
 
-        # 抄一份返回给前端的引用,将工具自定义事件引用数据持久化保存到checkpointer
-        if not interrupts and final_message_id and additional_info_data:
-            # 这两个都被赋值,有数据,推入图中做state更新操作
-            await self.agent.aupdate_state(
-                # config区分会话id
-                config=_config,
-                # 存一个字典,通过state的追加做更新操作
-                values={
-                    "additional_info":{
-                        final_message_id:additional_info_data
+            # 检测中断,内部是抛出自定义异常的形式来中断函数的
+            interrupts = await stream.interrupts()
+            if interrupts:
+                logger.info(f'事件中断:{interrupts},需要用户进行手动操作了')
+                # 将中断信息以 SSE 事件推送给前端，等待用户输入/确认
+                for item in interrupts:
+                    # 这个item.value刚好就是interrupt函数的入参数据
+                    yield ServerSentEvent(data=item.value,event='interrupt')
+
+            # 抄一份返回给前端的引用,将工具自定义事件引用数据持久化保存到checkpointer
+            if not interrupts and final_message_id and additional_info_data:
+                # 这两个都被赋值,有数据,推入图中做state更新操作
+                await self.agent.aupdate_state(
+                    # config区分会话id
+                    config=_config,
+                    # 存一个字典,通过state的追加做更新操作
+                    values={
+                        "additional_info":{
+                            final_message_id:additional_info_data
+                        }
                     }
-                }
-            )
+                )
+        except Exception as exc:  # noqa: BLE001  模型/图运行的任何异常都走降级
+            logger.warning(f"模型调用失败,进入降级: {type(exc).__name__}: {exc}")
+            async for sse in self._degrade_response(user_id, request):
+                yield sse
+            return
 
         # 结束响应
         yield ServerSentEvent(data='[DONE]',event='done')
+
+    async def _degrade_response(
+        self, user_id: int, request: ChatRequestModel
+    ) -> AsyncIterator[ServerSentEvent]:
+        """模型失败降级: 给确定结果并自动转人工开工单, 不伪装已生成(清单第9项)。"""
+        ticket_no = None
+        try:
+            from app.infra.database import AsyncSessionFactory
+            from app.modules.ticket.service import TicketService
+
+            async with AsyncSessionFactory() as session:
+                ticket = await TicketService(session).create_from_ai(
+                    user_id=user_id,
+                    ticket_type="handoff",
+                    summary=f"[模型降级自动转人工] 用户提问: {(request.message or '')[:200]}",
+                    thread_id=str(request.thread_id) if request.thread_id else None,
+                )
+                ticket_no = ticket.ticket_no
+        except Exception:
+            logger.exception("降级转人工工单创建失败")
+
+        if ticket_no:
+            text = (
+                "很抱歉,模型服务暂时不可用,本次未能生成回答。"
+                f"已为你转接人工服务,受理编号 {ticket_no},客服会尽快跟进; 你也可以稍后重新提问。"
+            )
+        else:
+            text = "很抱歉,模型服务暂时不可用,本次未能生成回答,请稍后重试。"
+        yield ServerSentEvent(data=text, event='message')
+        yield ServerSentEvent(data='[DONE]', event='done')

@@ -76,6 +76,8 @@ class LLMSettings(EnvSettings):
     """模型相关配置"""
     api_key: str = Field(alias="DEEPSEEK_API_KEY")
     chat_model: str = Field(alias="CHAT_MODEL", default="deepseek-v4-flash")
+    # 首字超时: 发起调用后超过该秒数没收到任何事件, 明确降级(不伪装已生成)
+    first_token_timeout: float = Field(alias="LLM_FIRST_TOKEN_TIMEOUT", default=20)
 
 class LoggingSettings(EnvSettings):
     """日志相关配置"""

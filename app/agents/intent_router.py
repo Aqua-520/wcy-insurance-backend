@@ -136,7 +136,7 @@ class IntentRouter:
             # 返回大模型结构化输出的对象
             return result
         except Exception as e:
-            logger.exception("模型意图识别失败 %s",)
+            logger.exception("模型意图识别失败: %s", e)
 
             # 如果报异常直接手动创建路由结果对象
             result: RouterResultModel =  RouterResultModel(
