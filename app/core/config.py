@@ -78,6 +78,12 @@ class LLMSettings(EnvSettings):
     chat_model: str = Field(alias="CHAT_MODEL", default="deepseek-v4-flash")
     # 首字超时: 发起调用后超过该秒数没收到任何事件, 明确降级(不伪装已生成)
     first_token_timeout: float = Field(alias="LLM_FIRST_TOKEN_TIMEOUT", default=20)
+    # 用量估算单价(元/百万tokens): 费用不落库, 按此单价实时估算, 官方调价改配置即可
+    price_input_per_1m: float = Field(alias="LLM_PRICE_INPUT_PER_1M", default=2.0)
+    price_output_per_1m: float = Field(alias="LLM_PRICE_OUTPUT_PER_1M", default=8.0)
+    price_cached_per_1m: float = Field(alias="LLM_PRICE_CACHED_PER_1M", default=0.5)
+    # 余额查询接口(官方文档化的 Get User Balance)
+    balance_url: str = Field(alias="LLM_BALANCE_URL", default="https://api.deepseek.com/user/balance")
 
 class LoggingSettings(EnvSettings):
     """日志相关配置"""
@@ -114,6 +120,30 @@ class AdminSettings(EnvSettings):
     init_role: str = Field(alias="ADMIN_INIT_ROLE", default="admin")
 
 DEFAULT_ADMIN_PASSWORD = "admin123456"
+
+
+# 人工接管(转人工)配置
+class HandoffSettings(EnvSettings):
+    """人工客服参数: 休息时段 / 排队超时 / 客服静默超时。
+
+    注意语义: 这里配的是**休息时段**(默认 00:00-06:00 没人上班), 不是值班时段。
+    真正的放行判断是"此刻有没有客服在线"(admin_users.last_seen_at),
+    时段只影响给客户的文案(是"客服已休息"还是"客服暂时不在线")。
+    """
+
+    # 休息时段(小时, 左闭右开), 支持跨零点(如 22-6); 起止相同 = 7x24 无休息时段
+    offline_start_hour: int = Field(alias="HANDOFF_OFFLINE_START_HOUR", default=0)
+    offline_end_hour: int = Field(alias="HANDOFF_OFFLINE_END_HOUR", default=6)
+    # 排队等待超时(秒): 超时自动转回 AI 并留下工单, 不让客户无限等
+    wait_timeout_seconds: int = Field(alias="HANDOFF_WAIT_TIMEOUT_SECONDS", default=180)
+    # 客服静默超时(秒): 接管后长时间无动作(下班/掉线), 自动释放回 AI
+    agent_idle_timeout_seconds: int = Field(alias="HANDOFF_AGENT_IDLE_TIMEOUT_SECONDS", default=600)
+    # 没有客服在线时的处理: leave_message(登记留言+AI 继续) / queue(照常排队)
+    offline_policy: str = Field(alias="HANDOFF_OFFLINE_POLICY", default="leave_message")
+
+    @property
+    def off_hours_text(self) -> str:
+        return f"{self.offline_start_hour:02d}:00-{self.offline_end_hour:02d}:00"
 
 
 # 知识库上传文件存储配置
@@ -158,6 +188,8 @@ class Settings(BaseSettings):
     # 后台管理员与上传存储配置
     admin: AdminSettings = Field(default_factory=AdminSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
+    # 人工接管(转人工): 在线时段/排队超时/客服静默超时
+    handoff: HandoffSettings = Field(default_factory=HandoffSettings)
 
     # 当前环境标识(dev/prod), 方便日志与排查
     env: str = APP_ENV

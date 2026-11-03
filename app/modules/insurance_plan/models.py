@@ -99,10 +99,10 @@ class InsurancePlanItem(Base, CreateAtMixin, UpdateAtMixin):
         nullable=True,
         comment='产品年缴预算参考'
     )
-    status: Mapped[Literal['uninsured', 'insured']] = mapped_column(
+    status: Mapped[Literal['uninsured', 'applying', 'insured']] = mapped_column(
         String(30), nullable=False,
         server_default="uninsured",
-        comment='方案项投保状态: uninsured-未投保、insured-已投保'
+        comment='方案项投保状态: uninsured-未投保、applying-投保中、insured-已投保'
     )
 
     plan: Mapped["InsurancePlan"] = relationship(

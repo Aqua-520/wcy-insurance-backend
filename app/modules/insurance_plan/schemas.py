@@ -23,3 +23,9 @@ class InsurancePlanCreate(BaseModel):
     summary: Optional[str] = Field(default=None, description='方案整体说明')
     insured_profile: dict = Field(default_factory=dict, description='推荐时使用的被保险人画像')
     items: list[InsurancePlanItemCreate] = Field(default_factory=list, description='方案中的产品项列表')
+
+
+class InsurancePlanUpdate(BaseModel):
+    """修改保险方案的请求模型(字段留空则不修改)"""
+    plan_name: Optional[str] = Field(default=None, min_length=1, max_length=120, description='方案名称')
+    summary: Optional[str] = Field(default=None, description='方案整体说明')

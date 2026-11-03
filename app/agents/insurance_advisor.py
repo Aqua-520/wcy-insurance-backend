@@ -11,7 +11,8 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 
 from app.core.config import settings
 from app.core.logging import get_logger
-# 导入定义的工具
+from app.modules.usage.callbacks import usage_collector
+
 from .tools import query_candidate_products, create_insurance_plan, query_product_clause
 # 导入context上下文格式规定类型
 from .schemas import InsuranceAgentContext
@@ -58,6 +59,9 @@ def init_insurance_agent():
         model=settings.llm.chat_model,
         api_key=settings.llm.api_key,
         extra_body={"thinking": {"type": "disabled"}},
+        # 用量进台账; stream_usage 让流式回答也带 token 用量
+        callbacks=[usage_collector("insurance_advisor")],
+        stream_usage=True,
     )
 
     # 2.创建Agent

@@ -20,6 +20,9 @@ from app.agents.schemas import InsuranceAgentContext,AdditionalInfoData
 # from aiostream import stream as astream
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.modules.chat_thread.broadcaster import broadcaster
+from app.modules.chat_thread.models import ChatMessage
+from app.modules.usage.context import current_usage_ctx
 
 logger = get_logger(__name__)
 
@@ -52,6 +55,26 @@ class ChatService:
 
         # 查到了则基于这个会话id进行模型调用,获取模型的回复
         # invoke需要传入用户最新消息,和历史会话消息的配置
+
+        # 用量采集上下文: 回调落库时带上会话/用户(请求级, 无需手动清理)
+        current_usage_ctx.set({
+            "thread_id": str(request.thread_id),
+            "user_id": user_id,
+            "model": settings.llm.chat_model,
+        })
+
+        # ---------- 人工接管: 客服接管期间 AI 静默 ----------
+        # 客户消息照常落库并广播(客服工作台靠增量拉取拿到), 但不再调用大模型。
+        if (chat_thread.mode or "ai") == "agent":
+            content = (request.message or "").strip()
+            if content:
+                await self._persist_message(str(request.thread_id), "user", content)
+            yield ServerSentEvent(data='[DONE]', event='done')
+            return
+
+        # 正常路径: 先落客户消息(业务真相源), 再调模型
+        if request.message and request.message.strip():
+            await self._persist_message(str(request.thread_id), "user", request.message.strip())
 
         # 构建用户消息
         # 判断一下本轮是否有中断恢复的字段,有则代表需要用户输入决策了
@@ -117,6 +140,8 @@ class ChatService:
         final_message_id: str|None = None
         # 定义字典来copy一份引用信息存到state中,state会自动调用checkpointer完成数据库持久化保存
         additional_info_data: AdditionalInfoData = {}
+        # 累积本轮回答文本, 流结束后落库(业务真相源)
+        answer_parts: list[str] = []
 
         # 模型失败降级(清单第9项): 首字超时/调用异常时给确定结果, 不伪装已生成
         first_token_timeout = settings.llm.first_token_timeout
@@ -148,9 +173,12 @@ class ChatService:
                     data = event_dict['params']['data'][0]
                     if isinstance(data,AIMessage):
                         # 如果第一条为手动构建的Ai消息,也就是我们要返回的固定消息,直接响应给前端
+                        if data.text:
+                            answer_parts.append(data.text)
                         yield ServerSentEvent(data=data.text,event='message') # 消息类型给前端做渲染用,data为消息内容
                     elif data.get('delta','') and data.get('delta').get('text'):
                         # 这里是系统自动构建的消息,是一个字典,delta这个key里面的文本才是图封装的消息
+                        answer_parts.append(data.get('delta').get('text'))
                         yield ServerSentEvent(data=data.get('delta').get('text'),event='message')
                     # 抓取流起始id
                     elif data.get('event') == 'message-start' and data.get('id'):
@@ -190,8 +218,22 @@ class ChatService:
                         }
                     }
                 )
+
+            # 回答落库(业务真相源): 放在 DONE 之前, 前端收到结束信号后立刻能拉到
+            if answer_parts:
+                await self._persist_message(
+                    str(request.thread_id),
+                    "assistant",
+                    "".join(answer_parts),
+                    additional_info=additional_info_data or None,
+                )
         except Exception as exc:  # noqa: BLE001  模型/图运行的任何异常都走降级
             logger.warning(f"模型调用失败,进入降级: {type(exc).__name__}: {exc}")
+            # 已经吐出去的部分也要落库, 否则客户重连后这段回答凭空消失
+            if answer_parts:
+                await self._persist_message(
+                    str(request.thread_id), "assistant", "".join(answer_parts)
+                )
             async for sse in self._degrade_response(user_id, request):
                 yield sse
             return
@@ -226,5 +268,46 @@ class ChatService:
             )
         else:
             text = "很抱歉,模型服务暂时不可用,本次未能生成回答,请稍后重试。"
+        # 降级话术同样要落库: 客户重连/客服查看时必须看得到这条确定结果
+        await self._persist_message(str(request.thread_id), "assistant", text)
         yield ServerSentEvent(data=text, event='message')
         yield ServerSentEvent(data='[DONE]', event='done')
+
+    async def _persist_message(
+        self,
+        thread_id,
+        role: str,
+        content: str,
+        *,
+        message_type: str = "text",
+        additional_info: dict | None = None,
+        sender_admin_id: int | None = None,
+        sender_admin_name: str | None = None,
+    ) -> None:
+        """写业务消息表(chat_messages)并广播信号。
+
+        用独立短会话, 不占用请求级 session 的事务;
+        任何异常只记日志 —— 消息台账故障绝不能打断对话主流程。
+        """
+        try:
+            from app.infra.database import AsyncSessionFactory
+            from app.modules.chat_thread.repository import ChatThreadRepository
+
+            async with AsyncSessionFactory() as session:
+                message = await ChatThreadRepository(session).add_message(
+                    thread_id=thread_id,
+                    role=role,
+                    content=content,
+                    message_type=message_type,
+                    additional_info=additional_info,
+                    sender_admin_id=sender_admin_id,
+                    sender_admin_name=sender_admin_name,
+                )
+                message_id = message.id
+                await session.commit()
+            broadcaster.publish(
+                str(thread_id),
+                {"type": "new_message", "thread_id": str(thread_id), "message_id": message_id, "role": role},
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("聊天消息落库失败 thread=%s role=%s", thread_id, role)

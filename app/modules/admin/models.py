@@ -6,7 +6,9 @@
 """
 from typing import Optional
 
-from sqlalchemy import BigInteger, String, text
+from datetime import datetime
+
+from sqlalchemy import BigInteger, DateTime, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.common.models import Base, CreateAtMixin, UpdateAtMixin
@@ -32,4 +34,9 @@ class AdminUser(Base, CreateAtMixin, UpdateAtMixin):
         nullable=False,
         server_default=text("'admin'::character varying"),
         comment="岗位角色: admin(管理员) / cs(客服) / kb(知识运营)",
+    )
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="最近活跃时间(登录后每次调后台接口节流刷新), 判断客服是否在线",
     )

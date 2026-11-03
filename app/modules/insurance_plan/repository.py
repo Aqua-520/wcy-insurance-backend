@@ -2,6 +2,9 @@
     负责和数据库交互
     我们需要操作两张表
 """
+from uuid import UUID
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 # 导入方案创建类
 from .schemas import InsurancePlanCreate
@@ -69,3 +72,41 @@ class InsurancePlanRepository:
 
         # 返回转换完毕的plan表对象和方案项列表
         return orm_insurance_plan, orm_product_list
+
+    # ---------- 方案项投保状态流转(转投保中/转已投保) ----------
+
+    async def get_plan_item(
+        self, plan_id: UUID, item_id: UUID
+    ) -> tuple[InsurancePlan, InsurancePlanItem] | None:
+        """按 plan_id + item_id 取方案项; item 不属于该方案时返回 None"""
+        plan = await self.session.get(InsurancePlan, plan_id)
+        if plan is None:
+            return None
+        item = await self.session.get(InsurancePlanItem, item_id)
+        if item is None or item.plan_id != plan_id:
+            return None
+        return plan, item
+
+    async def sync_plan_status(self, plan_id: UUID) -> str:
+        """按方案项汇总刷新方案级投保状态并返回新值。
+
+        规则: 全部已投保 -> insured; 任一投保中/已投保 -> applying; 否则 uninsured。
+        """
+        items = list(
+            await self.session.scalars(
+                select(InsurancePlanItem).where(InsurancePlanItem.plan_id == plan_id)
+            )
+        )
+        if not items:
+            return "uninsured"
+        statuses = [item.status for item in items]
+        if all(s == "insured" for s in statuses):
+            new_status = "insured"
+        elif any(s in ("applying", "insured") for s in statuses):
+            new_status = "applying"
+        else:
+            new_status = "uninsured"
+        plan = await self.session.get(InsurancePlan, plan_id)
+        if plan is not None and plan.status != new_status:
+            plan.status = new_status
+        return new_status

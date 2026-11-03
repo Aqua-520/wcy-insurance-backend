@@ -36,3 +36,13 @@ async def list_my_intents(
     return IntentListResponse(
         items=[IntentSummary.model_validate(i) for i in intents], total=len(intents)
     )
+
+
+@router.get("/{intent_id}/follows", summary="我的意向跟进进展(时间线)")
+async def list_my_intent_follows(
+    intent_id: int,
+    current: CurrentUser = Depends(get_current_user),
+    service: IntentService = Depends(init_service),
+):
+    follows = await service.list_follows(intent_id, user_id=current.user_id)
+    return {"items": follows, "total": len(follows)}

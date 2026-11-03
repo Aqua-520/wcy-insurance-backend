@@ -6,7 +6,9 @@ from uuid import UUID
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.modules.admin.models import AdminUser
 from .repository import ChatThreadRepository
 from .models import ChatThread
 # 导入自定义异常
@@ -130,6 +132,11 @@ class ChatThreadService:
             # 如果为空则抛出异常
             raise ChatThreadNotFoundError
 
+        # 人工接管改造: 业务消息表有数据就以库为准
+        # (checkpointer 只服务 AI 推理; 前端渲染要能看到客服消息与会话事件)
+        if await self.repository.count_messages(thread_id) > 0:
+            return await self._history_from_db(chat_thread)
+
         # 构建会话config，会话id
         # 前端传入会话id
         _config = RunnableConfig(configurable={"thread_id": str(thread_id)})
@@ -174,5 +181,64 @@ class ChatThreadService:
 
         # 赋值完成后,返回最后的响应体对象
         return ChatThreadHistoryResponse(thread_id=thread_id,messages=message_list,
-                                         interrupt=interrupts[0].value if interrupts else None
+                                         interrupt=interrupts[0].value if interrupts else None,
+                                         mode=(getattr(chat_thread, "mode", None) or "ai"),
+                                         handoff_note=(getattr(chat_thread, "handoff_note", None) or None),
                                          )
+
+    async def _history_from_db(self, chat_thread: ChatThread) -> ChatThreadHistoryResponse:
+        """从业务消息表回显历史(含客服消息与会话事件)。
+
+        老会话(升级前)没有 chat_messages 行, 走上面的 checkpointer 分支, 无需迁移。
+        """
+        thread_id = chat_thread.id
+        rows = await self.repository.list_messages(thread_id, after_id=0, limit=500)
+        message_list = [
+            Message(
+                id=row.id,
+                role=row.role,
+                content=row.content or "",
+                message_type=row.message_type or "text",
+                sender_admin_name=row.sender_admin_name,
+                additional_info=row.additional_info,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]
+
+        # 中断(方案确认卡)仍要看图状态, 读失败不影响历史回显
+        interrupt = await self._safe_read_interrupt(thread_id)
+
+        # 接管客服展示名
+        claimed_by_name = None
+        if chat_thread.claimed_by:
+            claimed_by_name = await self.session.scalar(
+                select(func.coalesce(AdminUser.display_name, AdminUser.username)).where(
+                    AdminUser.id == chat_thread.claimed_by
+                )
+            )
+
+        return ChatThreadHistoryResponse(
+            thread_id=thread_id,
+            messages=message_list,
+            interrupt=interrupt,
+            mode=chat_thread.mode or "ai",
+            claimed_by_name=claimed_by_name,
+            handoff_note=chat_thread.handoff_note or None,
+        )
+
+    async def _safe_read_interrupt(self, thread_id: UUID):
+        """读图快照里的中断(方案确认卡); 失败返回 None, 不影响历史回显。"""
+        try:
+            _config = RunnableConfig(configurable={"thread_id": str(thread_id)})
+            snapshot = await self.agent.aget_state(_config)
+            interrupts = getattr(snapshot, "interrupts", None)
+            if interrupts:
+                return interrupts[0].value
+            for task in getattr(snapshot, "tasks", None) or []:
+                task_interrupts = getattr(task, "interrupts", None)
+                if task_interrupts:
+                    return task_interrupts[0].value
+        except Exception:  # noqa: BLE001 快照读失败不能拖垮历史接口
+            return None
+        return None

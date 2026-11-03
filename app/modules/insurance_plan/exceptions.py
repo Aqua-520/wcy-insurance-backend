@@ -16,3 +16,10 @@ class InsurancePlanForbiddenError(ApplicationError):
     status_code = 403
     code = "insurance_plan_forbidden"
     message = "无权查看该保险方案"
+
+
+class InsurancePlanConflictError(ApplicationError):
+    """方案已进入投保流程, 禁止修改/删除"""
+    status_code = 409
+    code = "insurance_plan_conflict"
+    message = "方案已进入投保流程, 不能修改或删除"

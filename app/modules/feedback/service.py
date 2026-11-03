@@ -56,6 +56,9 @@ class FeedbackService:
         if confirm == "rejected":
             feedback.status = "improving"
         await self.session.commit()
+        # updated_at 是 onupdate 服务端字段, UPDATE 后不回填,
+        # 不刷新的话序列化时懒加载会 MissingGreenlet
+        await self.session.refresh(feedback)
         return feedback
 
     # ---------- 后台侧 ----------
@@ -92,4 +95,6 @@ class FeedbackService:
             feedback.handle_note = handle_note
         feedback.handled_admin_id = admin_id
         await self.session.commit()
+        # 同 confirm: updated_at 服务端生成, 需刷新避免序列化 MissingGreenlet
+        await self.session.refresh(feedback)
         return feedback

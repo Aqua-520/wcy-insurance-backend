@@ -23,6 +23,7 @@ from app.infra.database import AsyncSessionFactory
 from .models import ParentChunk
 from .repository import ParentChunkRepository
 from .splitter import ChunkData, split_clause
+from .quality import load_probe_questions, probe_search, split_quality_stats
 from app.modules.product.repository import Product
 
 # Milvus 标量字段里的章节路径分隔符（数组不被 langchain 字段类型推断支持）
@@ -127,6 +128,19 @@ class RAGPipeline:
                 ids=[str(x) for x in deleted_ids],
             )
 
+        # 入库质检: 切分统计 + 探针试搜(复用评测题集每产品前几问)
+        # 延迟导入避免 rag 包内循环依赖
+        from app.rag import question_retriever
+
+        probes = await probe_search(
+            question_retriever,
+            product.id,
+            load_probe_questions(product.id),
+        )
+        quality = split_quality_stats(chunks)
+        quality["probes"] = probes
+        quality["probe_pass"] = all(p["ok"] for p in probes) if probes else None
+
         return IngestReport(
             product_id=product.id,
             product_name=product.name,
@@ -137,6 +151,7 @@ class RAGPipeline:
             changed=changed,
             unchanged=unchanged,
             deleted=len(deleted_ids),
+            quality=quality,
         )
 
     def _read_clause_markdown(self, clause_stem: str) -> str:

@@ -10,7 +10,8 @@ from langgraph.graph import StateGraph
 
 from app.core.config import settings
 from app.core.logging import get_logger
-# 定义子图的state状态类
+from app.modules.usage.callbacks import usage_collector
+
 from .schemas import InsuranceAgentState
 
 
@@ -42,6 +43,9 @@ class ChitChatGraph:
             model=settings.llm.chat_model,
             api_key=settings.llm.api_key,
             extra_body={"thinking": {"type": "disabled"}},
+            # 用量进台账; stream_usage 让流式回答也带 token 用量
+            callbacks=[usage_collector("chit_chat")],
+            stream_usage=True,
         )
 
         self.llm = llm

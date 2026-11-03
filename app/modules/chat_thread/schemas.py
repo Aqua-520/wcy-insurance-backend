@@ -27,6 +27,8 @@ class ChatThreadCreateResponse(BaseModel):
     title: str
     created_at: datetime
     updated_at: datetime
+    # 会话模式: ai(仅AI) / waiting(排队等人工) / agent(人工接管中)
+    mode: str = "ai"
 
     # 开启字段校验,从数据库模型转到pydantic模型的时候
     # 不开则是将数据库对象转成了json
@@ -42,12 +44,17 @@ class ChatThreadCreateResponse(BaseModel):
 class Message(BaseModel):
         """
         封装一问一答聊天详情的对象
-        # 通过role区分角色
+        # 通过role区分角色: user / assistant / agent / system
         """
         role: str  # "user" 或 "assistant"
         content: str
         # 新增条款引用的回显
         additional_info: Optional[AdditionalInfoData] = Field(default=None,description='引用的条款片段回显')
+        # 人工接管新增: 消息主键(前端增量拉取/去重用) 与展示归属
+        id: Optional[int] = None
+        message_type: str = "text"
+        sender_admin_name: Optional[str] = None
+        created_at: Optional[datetime] = None
 
         model_config = ConfigDict(
             json_schema_extra={
@@ -67,6 +74,11 @@ class ChatThreadHistoryResponse(BaseModel):
 
         # 中断回显字段
         interrupt: Optional[Any] = None  # 没有中断时为 None
+        # 会话模式(人工接管): ai / waiting / agent
+        mode: str = "ai"
+        # 人工接管展示信息(接管的客服名/交接说明)
+        claimed_by_name: Optional[str] = None
+        handoff_note: Optional[str] = None
 
         model_config = ConfigDict(
             json_schema_extra={

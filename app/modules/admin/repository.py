@@ -18,3 +18,8 @@ class AdminRepository:
         return await self.session.scalar(
             select(AdminUser).where(AdminUser.username == username)
         )
+
+    async def list_all(self) -> list[AdminUser]:
+        return list(
+            await self.session.scalars(select(AdminUser).order_by(AdminUser.id))
+        )

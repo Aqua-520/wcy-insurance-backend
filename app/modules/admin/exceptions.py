@@ -87,3 +87,24 @@ class DocumentInUseError(ApplicationError):
     status_code = 409
     code = "document_in_use"
     message = "文档仍被产品绑定，不能删除"
+
+
+class AdminUserNotFoundError(ApplicationError):
+    """员工账号不存在"""
+    status_code = 404
+    code = "admin_user_not_found"
+    message = "员工账号不存在"
+
+
+class AdminUserExistsError(ApplicationError):
+    """用户名已被占用"""
+    status_code = 409
+    code = "admin_user_exists"
+    message = "用户名已被占用"
+
+
+class AdminUserConflictError(_MessageError):
+    """员工管理冲突(改自己/删最后一个管理员等)"""
+    status_code = 409
+    code = "admin_user_conflict"
+    message = "该操作不被允许"

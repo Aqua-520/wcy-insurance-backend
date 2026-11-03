@@ -20,6 +20,7 @@ from app.modules.auth.security import decode_access_token
 from app.infra.database import AsyncSessionFactory
 
 from .exceptions import AdminForbiddenError, AdminInactiveError, AdminTokenInvalidError
+from .presence import should_touch, touch
 from .repository import AdminRepository
 
 
@@ -58,6 +59,9 @@ async def get_current_admin(
             raise AdminTokenInvalidError
         if admin.status != "active":
             raise AdminInactiveError
+        # 在岗心跳: 打开后台干活就算在线(节流写, 不影响接口耗时)
+        if should_touch(admin.id):
+            await touch(session, admin)
         return CurrentAdmin(admin_id=admin.id, username=admin.username, role=admin.role)
 
 

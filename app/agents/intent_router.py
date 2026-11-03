@@ -10,6 +10,7 @@ from langchain_core.messages import HumanMessage
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.modules.usage.callbacks import usage_collector
 
 from .schemas import RouterResultModel
 from langchain_core.messages import SystemMessage
@@ -103,6 +104,9 @@ class IntentRouter:
             model=settings.llm.chat_model,
             api_key=settings.llm.api_key,
             extra_body={"thinking": {"type": "disabled"}},
+            # 用量进台账; stream_usage 让流式回答也带 token 用量
+            callbacks=[usage_collector("intent_router")],
+            stream_usage=True,
         )
         # 将大模型的输出限定为指定类型
         new_model = model.with_structured_output(RouterResultModel)

@@ -23,3 +23,10 @@ class IntentInvalidStateError(ApplicationError):
     status_code = 409
     code = "intent_invalid_state"
     message = "意向单当前状态不允许该操作"
+
+
+class IntentScriptError(ApplicationError):
+    """AI 跟进话术生成失败"""
+    status_code = 502
+    code = "intent_script_failed"
+    message = "AI 话术生成失败, 请稍后重试或手动填写"

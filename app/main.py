@@ -84,12 +84,26 @@ from app.modules.admin.product_router import router as admin_product_router
 app.include_router(admin_product_router)
 from app.modules.kb.router import router as admin_kb_router
 app.include_router(admin_kb_router)
+# 用量监控: 大模型 token 台账/费用估算/余额查询(知识运营与管理员可见)
+from app.modules.usage.router import router as admin_usage_router
+app.include_router(admin_usage_router)
+# 员工管理: 创建/编辑/禁用/删除内部员工(仅管理员)
+from app.modules.admin.user_router import router as admin_user_router
+app.include_router(admin_user_router)
+
+from app.modules.admin.dashboard_router import router as admin_dashboard_router
+app.include_router(admin_dashboard_router)
 # 导入会话管理路由
 from app.modules.chat_thread.router import router as chat_thread_router
 app.include_router(chat_thread_router)
 # 导入大模型消息调用的路由
 from app.modules.chat.router import router as chat_router
 app.include_router(chat_router)
+# 人工接管(AI 转人工): 客户侧申请/增量拉取 + 客服工作台接管会话
+from app.modules.handoff.router import router as handoff_router
+app.include_router(handoff_router)
+from app.modules.handoff.staff_router import router as handoff_staff_router
+app.include_router(handoff_staff_router)
 # 工单: 客户侧 + 客服侧(统一人工受理模型)
 from app.modules.ticket.router import router as ticket_router
 app.include_router(ticket_router)
@@ -100,6 +114,8 @@ from app.modules.intent.router import router as intent_router
 app.include_router(intent_router)
 from app.modules.intent.staff_router import router as intent_staff_router
 app.include_router(intent_staff_router)
+from app.modules.intent.policy_router import router as policy_router
+app.include_router(policy_router)
 # 保险方案只读查询(前端刷新方案项状态)
 from app.modules.insurance_plan.router import router as insurance_plan_router
 app.include_router(insurance_plan_router)

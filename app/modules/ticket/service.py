@@ -24,6 +24,18 @@ def _ticket_no() -> str:
 
 
 class TicketService:
+    @staticmethod
+    def _thread_key(thread_id) -> str | None:
+        """tickets.thread_id 是 VARCHAR(64), 但图里 config 带的是 UUID 对象。
+
+        直接传 UUID 会变成 `tickets.thread_id = $1::UUID`, PG 报
+        "No operator matches the given name and argument types" —— 之前理赔/转人工
+        建票一直被 try/except 吞成"工单创建失败"。入口统一转成字符串。
+        """
+        if thread_id is None:
+            return None
+        return str(thread_id)
+
     def __init__(self, session: AsyncSession):
         self.session = session
 
@@ -36,7 +48,7 @@ class TicketService:
         ticket = Ticket(
             ticket_no=_ticket_no(),
             user_id=user_id,
-            thread_id=thread_id,
+            thread_id=self._thread_key(thread_id),
             ticket_type=ticket_type,
             status="pending",
             summary=summary,
@@ -50,17 +62,18 @@ class TicketService:
         self, user_id: int, ticket_type: str, summary: str, thread_id: str | None = None
     ) -> Ticket:
         """AI 转人工节点调用: 同会话已有未关闭工单则复用, 不重复开单"""
+        thread_key = self._thread_key(thread_id)
         existing = await self.session.scalar(
             select(Ticket).where(
                 Ticket.user_id == user_id,
-                Ticket.thread_id == thread_id,
+                Ticket.thread_id == thread_key,
                 Ticket.ticket_type == ticket_type,
                 Ticket.status.in_(("pending", "processing", "reopened")),
             )
         )
         if existing is not None:
             return existing
-        return await self.create_from_user(user_id, ticket_type, summary, thread_id)
+        return await self.create_from_user(user_id, ticket_type, summary, thread_key)
 
     async def list_by_user(self, user_id: int) -> list[Ticket]:
         return list(
@@ -91,6 +104,8 @@ class TicketService:
         ticket.status = "reopened"
         ticket.assigned_admin_id = None
         await self.session.commit()
+        # 同 claim: updated_at 服务端生成, 需刷新避免序列化 MissingGreenlet
+        await self.session.refresh(ticket)
         return ticket
 
     # ---------- 客服侧 ----------
@@ -123,6 +138,9 @@ class TicketService:
         ticket.status = "processing"
         ticket.assigned_admin_id = admin_id
         await self.session.commit()
+        # updated_at 是 onupdate 服务端字段, UPDATE 后不回填,
+        # 不刷新的话序列化时懒加载会 MissingGreenlet
+        await self.session.refresh(ticket)
         return ticket
 
     async def reply(self, ticket: Ticket, admin_id: int, content: str) -> TicketMessage:
@@ -145,6 +163,8 @@ class TicketService:
         ticket.status = "closed"
         ticket.closed_at = datetime.now(timezone.utc).isoformat()
         await self.session.commit()
+        # 同 claim: updated_at 服务端生成, 需刷新避免序列化 MissingGreenlet
+        await self.session.refresh(ticket)
         return ticket
 
     async def get_detail(self, ticket_id: int) -> Ticket:
